@@ -15,7 +15,7 @@ const Checkout = () => {
 
   if (cartItems.length === 0) { navigate("/cart"); return null; }
 
-  // Guest users must log in before placing an order
+  // Not logged in at all
   if (!token) {
     return (
       <div className="max-w-md mx-auto px-5 py-24 text-center">
@@ -31,6 +31,26 @@ const Checkout = () => {
           <p className="text-stone text-xs mt-4">
             No account? <a href="/login" className="text-primary underline">Create one — it's free</a>
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Logged in as admin — admin accounts cannot place orders
+  if (!userId) {
+    return (
+      <div className="max-w-md mx-auto px-5 py-24 text-center">
+        <div className="bg-white border border-border rounded-2xl shadow-card p-10">
+          <h2 className="font-display text-2xl font-bold mb-3">Admin accounts can't place orders</h2>
+          <p className="text-stone text-sm mb-6">
+            You're currently logged in as an admin. To place an order, please log out and sign in with a customer account.
+          </p>
+          <a
+            href="/login"
+            className="inline-block bg-primary text-white px-8 py-3.5 rounded-xl font-semibold text-sm hover:bg-primaryDark transition-colors"
+          >
+            Switch account
+          </a>
         </div>
       </div>
     );
@@ -55,16 +75,14 @@ const Checkout = () => {
       const amount = cartTotal + 150;
 
       if (method?.id === "chapa") {
-        // Redirect to Chapa checkout
         const data = await placeOrderChapa(userId, items, amount, address);
         if (data.success && data.checkout_url) {
           clearCart();
-          window.location.href = data.checkout_url; // redirect to Chapa
+          window.location.href = data.checkout_url;
         } else {
           setError(data.message || "Failed to initialize payment");
         }
       } else {
-        // COD or manual payment
         const data = await placeOrderCOD(userId, items, amount, address);
         if (data.success) {
           clearCart();
@@ -85,8 +103,6 @@ const Checkout = () => {
   return (
     <div className="max-w-5xl mx-auto px-5 md:px-8 py-12">
       <h1 className="font-display text-4xl font-bold mb-10">Checkout</h1>
-
-
 
       {/* Steps */}
       <div className="flex items-center gap-3 mb-10 text-sm">

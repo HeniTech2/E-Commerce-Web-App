@@ -1,21 +1,21 @@
 import { useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { ShopContext } from "../context/ShopContext";
 import { loginUser, registerUser } from "../api";
 
 const Login = () => {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useContext(ShopContext);
   const navigate = useNavigate();
+
   const inputClass =
     "w-full border border-border bg-paper2 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
     setLoading(true);
     try {
       const data =
@@ -25,12 +25,13 @@ const Login = () => {
 
       if (data.success) {
         login(data.token);
+        toast.success(mode === "login" ? "Welcome back!" : "Account created!");
         navigate("/");
       } else {
-        setError(data.message || "Something went wrong");
+        toast.error(data.message || "Something went wrong");
       }
     } catch {
-      setError("Could not connect to server");
+      toast.error("Could not connect to server");
     } finally {
       setLoading(false);
     }
@@ -45,11 +46,6 @@ const Login = () => {
         <h1 className="font-display text-3xl font-bold text-center mb-8">
           {mode === "login" ? "Welcome back" : "Create an account"}
         </h1>
-        {error && (
-          <p className="text-danger text-sm text-center mb-4 bg-red-50 border border-red-200 rounded-xl px-4 py-2">
-            {error}
-          </p>
-        )}
         <form className="space-y-4" onSubmit={handleSubmit}>
           {mode === "signup" && (
             <input
@@ -86,7 +82,7 @@ const Login = () => {
         <p className="text-center text-sm text-stone mt-6">
           {mode === "login" ? "New to Marqato? " : "Already have an account? "}
           <button
-            onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}
+            onClick={() => setMode(mode === "login" ? "signup" : "login")}
             className="text-primary font-medium hover:underline"
           >
             {mode === "login" ? "Create one" : "Sign in"}

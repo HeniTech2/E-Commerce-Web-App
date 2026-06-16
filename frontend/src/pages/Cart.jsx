@@ -1,11 +1,17 @@
 import { useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { ShopContext, currency } from "../context/ShopContext";
 import { HiOutlineTrash, HiOutlineShoppingBag } from "react-icons/hi";
 
 const Cart = () => {
   const { cartItems, updateQty, removeFromCart, cartTotal } = useContext(ShopContext);
   const navigate = useNavigate();
+
+  const handleRemove = (id, size, name) => {
+    removeFromCart(id, size);
+    toast.success(`${name} removed from cart`);
+  };
 
   if (cartItems.length === 0) {
     return (
@@ -40,7 +46,11 @@ const Cart = () => {
                       <p className="text-xs text-stone uppercase tracking-wide mt-1">{p.category}</p>
                       {size !== "default" && <p className="text-xs text-stone mt-0.5">Size: {size}</p>}
                     </div>
-                    <button onClick={() => removeFromCart(id, size)} className="text-stoneLight hover:text-danger transition-colors" aria-label="Remove">
+                    <button
+                      onClick={() => handleRemove(id, size, p.name)}
+                      className="text-stoneLight hover:text-danger transition-colors"
+                      aria-label="Remove"
+                    >
                       <HiOutlineTrash size={18} />
                     </button>
                   </div>

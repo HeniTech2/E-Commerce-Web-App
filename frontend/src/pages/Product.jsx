@@ -1,13 +1,13 @@
 import { useContext, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { HiStar, HiOutlineTruck, HiOutlineRefresh, HiCheck } from "react-icons/hi";
+import { toast } from "sonner";
+import { HiOutlineTruck, HiOutlineRefresh, HiCheck } from "react-icons/hi";
 import { ShopContext, currency, stockStatus } from "../context/ShopContext";
 import ProductCard from "../components/ProductCard";
 
 const Product = () => {
   const { id } = useParams();
   const { products, addToCart, productsLoading } = useContext(ShopContext);
-  // Backend uses `id`, static used `_id`
   const product = products.find((p) => (p.id || p._id) === id);
   const [activeImg, setActiveImg] = useState(0);
   const [qty, setQty] = useState(1);
@@ -28,15 +28,16 @@ const Product = () => {
   const related = products.filter((p) => p.category === product.category && (p.id || p._id) !== pid).slice(0, 4);
 
   const handleAdd = () => {
-    // If product has sizes, a size must be selected
     if (product.sizes?.length > 0 && !selectedSize) {
       setSizeError(true);
       setTimeout(() => setSizeError(false), 2000);
+      toast.error("Please select a size first");
       return;
     }
     const size = selectedSize || "default";
     addToCart(pid, size);
     setAdded(true);
+    toast.success(`${product.name} added to cart`);
     setTimeout(() => setAdded(false), 1800);
   };
 
@@ -81,7 +82,6 @@ const Product = () => {
 
           <p className="text-stone mt-5 leading-relaxed">{product.description}</p>
 
-          {/* Sizes if present */}
           {product.sizes?.length > 0 && (
             <div className="mt-5">
               <p className="text-sm font-semibold mb-2">
