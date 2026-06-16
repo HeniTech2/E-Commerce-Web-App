@@ -8,3 +8,6 @@ backend/node_modules/
 
 frontend/.env
 backend/.env
+backend/7.8.0
+backend/my-current.txt
+backend/uploads/
