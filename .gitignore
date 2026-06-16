@@ -11,3 +11,5 @@ backend/.env
 backend/7.8.0
 backend/my-current.txt
 backend/uploads/
+frontend/.gitignore
+frontend/README.md
