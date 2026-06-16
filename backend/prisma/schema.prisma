@@ -27,6 +27,7 @@ model Product {
   subCategory String
   sizes       String[]
   bestseller  Boolean  @default(false)
+  stock       Int      @default(99)
   date        BigInt
 }
 
