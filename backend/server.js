@@ -15,20 +15,32 @@ const PORT = process.env.PORT || 5000;
 
 // ── Security ──────────────────────────────────────────────────────
 app.use(helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" }, // allow images to load cross-origin
+    crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
 
+// General limiter — high enough for normal browsing + bulk admin uploads
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100,
+    max: 1000,
     message: { success: false, message: "Too many requests, please try again later." },
+    skip: (req) => {
+        // Never rate-limit static file requests
+        return req.path.startsWith("/uploads");
+    },
 });
-app.use(limiter);
 
+// Auth limiter — keep strict to prevent brute-force
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 20,
     message: { success: false, message: "Too many login attempts, please try again later." },
+});
+
+// Admin action limiter — generous for bulk product uploads
+const adminLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 500,
+    message: { success: false, message: "Too many admin requests, please try again later." },
 });
 
 // ── CORS ──────────────────────────────────────────────────────────
@@ -55,10 +67,10 @@ app.use(express.json());
 app.use("/uploads", express.static("uploads"));
 
 // ── Routes ────────────────────────────────────────────────────────
-app.use("/api/user", authLimiter, userRouter);
-app.use("/api/product", productRouter);
-app.use("/api/cart", cartRouter);
-app.use("/api/order", orderRouter);
+app.use("/api/user", authLimiter, userRouter);          // strict: login/register
+app.use("/api/product", adminLimiter, productRouter);   // generous: bulk uploads
+app.use("/api/cart", limiter, cartRouter);              // normal
+app.use("/api/order", limiter, orderRouter);            // normal
 
 app.get("/", (req, res) => res.json({ success: true, message: "Marqato API running" }));
 
