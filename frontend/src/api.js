@@ -33,6 +33,13 @@ export const addProduct = (formData) =>
     body: formData,
   }).then((r) => r.json());
 
+export const updateProduct = (formData) =>
+  fetch(`${BASE_URL}/api/product/update`, {
+    method: "POST",
+    headers: { token: localStorage.getItem("marqato_token") },
+    body: formData,
+  }).then((r) => r.json());
+
 export const removeProduct = (id) =>
   api("/api/product/remove", { method: "POST", body: JSON.stringify({ id }) });
 
@@ -61,3 +68,10 @@ export const getAllOrders = () =>
 
 export const updateOrderStatus = (orderId, status) =>
   api("/api/order/status", { method: "POST", body: JSON.stringify({ orderId, status }) });
+
+// Profile
+export const updateProfile = (name, email) =>
+  api("/api/user/profile", { method: "POST", body: JSON.stringify({ name, email }) });
+
+export const changePassword = (currentPassword, newPassword) =>
+  api("/api/user/password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
