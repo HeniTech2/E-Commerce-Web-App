@@ -6,6 +6,8 @@ import {
   updateCartAPI,
   getUserOrders,
   placeOrderCOD,
+  getWishlist,
+  toggleWishlistAPI,
 } from "../api";
 
 export const ShopContext = createContext(null);
@@ -45,12 +47,13 @@ export const ShopProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem("marqato_token") || "");
   const [products, setProducts] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);
-  const [cart, setCart] = useState({}); // { itemId: { size: qty } } — mirrors backend
+  const [cart, setCart] = useState({});
   const [orders, setOrders] = useState([]);
+  const [wishlist, setWishlist] = useState([]); // array of product ids
 
   const userId = token ? parseToken(token) : null;
 
-  // ── Products ─────────────────────────────────────────────────
+  // ── Products ──────────────────────────────────────────────────
   const loadProducts = useCallback(async () => {
     setProductsLoading(true);
     try {
@@ -79,7 +82,6 @@ export const ShopProvider = ({ children }) => {
   useEffect(() => { loadCart(); }, [loadCart]);
 
   const addToCart = async (itemId, size = "default") => {
-    // Optimistic update
     setCart((prev) => {
       const next = { ...prev };
       if (!next[itemId]) next[itemId] = {};
@@ -109,10 +111,8 @@ export const ShopProvider = ({ children }) => {
   };
 
   const removeFromCart = (itemId, size = "default") => updateQty(itemId, size, 0);
-
   const clearCart = () => setCart({});
 
-  // Flat cart count and total (collapse sizes)
   const cartCount = Object.values(cart).reduce(
     (sum, sizes) => sum + Object.values(sizes).reduce((a, b) => a + b, 0),
     0
@@ -124,7 +124,6 @@ export const ShopProvider = ({ children }) => {
     return sum + (p ? p.price * qty : 0);
   }, 0);
 
-  // Cart items as flat array for UI
   const cartItems = Object.entries(cart).flatMap(([id, sizes]) =>
     Object.entries(sizes).map(([size, qty]) => {
       const p = products.find((p) => p.id === id);
@@ -172,7 +171,6 @@ export const ShopProvider = ({ children }) => {
         return data.order;
       }
     } else {
-      // Guest fallback: local only
       const order = {
         id: "MQ" + Date.now().toString().slice(-8),
         date: Date.now(),
@@ -192,6 +190,38 @@ export const ShopProvider = ({ children }) => {
     }
   };
 
+  // ── Wishlist ──────────────────────────────────────────────────
+  const loadWishlist = useCallback(async () => {
+    if (!userId) { setWishlist([]); return; }
+    try {
+      const data = await getWishlist(userId);
+      if (data.success) setWishlist(data.wishlist || []);
+    } catch (e) {
+      console.error("Failed to load wishlist", e);
+    }
+  }, [userId]);
+
+  useEffect(() => { loadWishlist(); }, [loadWishlist]);
+
+  const toggleWishlist = async (productId) => {
+    if (!userId) return;
+    // Optimistic update
+    setWishlist((prev) =>
+      prev.includes(productId)
+        ? prev.filter((id) => id !== productId)
+        : [...prev, productId]
+    );
+    try {
+      const data = await toggleWishlistAPI(userId, productId);
+      if (data.success) setWishlist(data.wishlist);
+    } catch (e) {
+      // Revert on failure
+      loadWishlist();
+    }
+  };
+
+  const isWishlisted = (productId) => wishlist.includes(productId);
+
   // ── Auth ──────────────────────────────────────────────────────
   const login = (newToken) => {
     localStorage.setItem("marqato_token", newToken);
@@ -203,6 +233,7 @@ export const ShopProvider = ({ children }) => {
     setToken("");
     setCart({});
     setOrders([]);
+    setWishlist([]);
   };
 
   return (
@@ -226,6 +257,11 @@ export const ShopProvider = ({ children }) => {
         orders,
         placeOrder,
         reloadOrders: loadOrders,
+        // wishlist
+        wishlist,
+        toggleWishlist,
+        isWishlisted,
+        reloadWishlist: loadWishlist,
         // auth
         token,
         userId,

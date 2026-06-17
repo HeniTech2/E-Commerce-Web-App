@@ -63,6 +63,9 @@ export const placeOrderChapa = (userId, items, amount, address) =>
 export const getUserOrders = (userId) =>
   api("/api/order/userorders", { method: "POST", body: JSON.stringify({ userId }) });
 
+export const getOrderById = (orderId) =>
+  api("/api/order/single", { method: "POST", body: JSON.stringify({ orderId }) });
+
 export const getAllOrders = () =>
   api("/api/order/list", { method: "POST", body: JSON.stringify({}) });
 
@@ -75,3 +78,10 @@ export const updateProfile = (name, email) =>
 
 export const changePassword = (currentPassword, newPassword) =>
   api("/api/user/password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
+
+// Wishlist
+export const getWishlist = (userId) =>
+  api("/api/wishlist/get", { method: "POST", body: JSON.stringify({ userId }) });
+
+export const toggleWishlistAPI = (userId, productId) =>
+  api("/api/wishlist/toggle", { method: "POST", body: JSON.stringify({ userId, productId }) });

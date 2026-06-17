@@ -8,6 +8,7 @@ import {
   HiOutlineMenu,
   HiX,
   HiOutlineClipboardList,
+  HiOutlineHeart,
 } from "react-icons/hi";
 import { ShopContext } from "../context/ShopContext";
 
@@ -17,11 +18,13 @@ const navLinkClass = ({ isActive }) =>
   }`;
 
 const Navbar = () => {
-  const { cartCount, token, logout } = useContext(ShopContext);
+  const { cartCount, wishlist, token, logout } = useContext(ShopContext);
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
+
+  const wishlistCount = wishlist?.length || 0;
 
   // Close menu on route change
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
@@ -94,6 +97,15 @@ const Navbar = () => {
                   </Link>
                   <Link to="/orders" className="p-2 rounded-lg hover:bg-surface hover:text-primary transition-colors" title="My orders" aria-label="Orders">
                     <HiOutlineClipboardList size={20} />
+                  </Link>
+                  {/* Wishlist */}
+                  <Link to="/wishlist" className="relative p-2 rounded-lg hover:bg-surface hover:text-primary transition-colors" title="Wishlist" aria-label="Wishlist">
+                    <HiOutlineHeart size={20} />
+                    {wishlistCount > 0 && (
+                      <span className="absolute top-0.5 right-0.5 bg-rose-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                        {wishlistCount > 99 ? "99+" : wishlistCount}
+                      </span>
+                    )}
                   </Link>
                   <button onClick={handleLogout} className="p-2 rounded-lg hover:bg-surface hover:text-danger transition-colors" title="Sign out" aria-label="Sign out">
                     <HiOutlineLogout size={20} />
@@ -186,6 +198,12 @@ const Navbar = () => {
               </Link>
               <Link to="/orders" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-ink hover:bg-surface transition-colors">
                 <HiOutlineClipboardList size={18} /> My orders
+              </Link>
+              <Link to="/wishlist" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-ink hover:bg-surface transition-colors">
+                <HiOutlineHeart size={18} /> Wishlist
+                {wishlistCount > 0 && (
+                  <span className="ml-auto bg-rose-100 text-rose-600 text-[10px] font-bold px-2 py-0.5 rounded-full">{wishlistCount}</span>
+                )}
               </Link>
               <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-danger hover:bg-red-50 transition-colors w-full text-left">
                 <HiOutlineLogout size={18} /> Sign out
