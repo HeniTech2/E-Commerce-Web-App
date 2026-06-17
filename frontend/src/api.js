@@ -85,3 +85,47 @@ export const getWishlist = (userId) =>
 
 export const toggleWishlistAPI = (userId, productId) =>
   api("/api/wishlist/toggle", { method: "POST", body: JSON.stringify({ userId, productId }) });
+
+// ── Admin Settings (NEW) ──────────────────────────────────────────
+export const getAdminSettings = async () => {
+  const data = await api("/api/content/list");
+  if (!data.success) return { success: false };
+  // filter only admin_* keys and rebuild as flat object
+  const settings = {};
+  (data.content || []).forEach((item) => {
+    if (item.key.startsWith("admin_")) {
+      const k = item.key.replace("admin_", "");
+      settings[k] = item.body || item.title || item.image || "";
+    }
+  });
+  return { success: true, settings };
+};
+
+export const saveAdminSetting = async (key, value) => {
+  if (key === "__reset__") {
+    // delete all admin_* keys by saving empty values — simplest approach
+    return api("/api/content/list").then(async (data) => {
+      if (!data.success) return;
+      const adminKeys = (data.content || [])
+        .filter((c) => c.key.startsWith("admin_"))
+        .map((c) => c.key);
+      for (const k of adminKeys) {
+        await api("/api/content/remove", {
+          method: "POST",
+          body: JSON.stringify({ key: k }),
+        });
+      }
+    });
+  }
+
+  // images are handled separately via multipart in Settings.jsx
+  if (key === "logoUrl" || key === "bgImageUrl") return;
+
+  return api("/api/content/save", {
+    method: "POST",
+    body: JSON.stringify({
+      key: `admin_${key}`,
+      body: String(value),
+    }),
+  });
+};
