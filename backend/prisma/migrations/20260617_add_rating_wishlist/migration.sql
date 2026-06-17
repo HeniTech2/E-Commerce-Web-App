@@ -1,0 +1,6 @@
+-- Add rating and reviews to Product
+ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "rating" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Product" ADD COLUMN IF NOT EXISTS "reviews" INTEGER NOT NULL DEFAULT 0;
+
+-- Add wishlist to User
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "wishlist" TEXT[] NOT NULL DEFAULT '{}';
