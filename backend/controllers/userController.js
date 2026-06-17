@@ -43,11 +43,16 @@ const registerUser = async (req, res) => {
   }
 };
 
+// ── Fixed: admin JWT now has role + expiry ────────────────────────────────────
 const adminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
     if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
-      const token = jwt.sign(email + password, process.env.JWT_SECRET);
+      const token = jwt.sign(
+        { role: "admin", email },
+        process.env.JWT_SECRET,
+        { expiresIn: "8h" }
+      );
       res.json({ success: true, token });
     } else {
       res.json({ success: false, message: "Invalid credentials" });
@@ -79,7 +84,6 @@ const updateProfile = async (req, res) => {
     if (!name || !email) return res.json({ success: false, message: "Name and email are required" });
     if (!validator.isEmail(email)) return res.json({ success: false, message: "Please enter a valid email" });
 
-    // Check email not taken by another user
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing && existing.id !== userId) {
       return res.json({ success: false, message: "Email already in use" });
