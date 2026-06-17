@@ -17,7 +17,6 @@ const placeOrder = async (req, res) => {
       return res.json({ success: false, message: "You must be logged in as a customer to place an order." });
     }
 
-    // Verify user exists
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       return res.json({ success: false, message: "User account not found. Please log in again." });
@@ -36,7 +35,6 @@ const placeOrder = async (req, res) => {
     });
 
     await prisma.user.update({ where: { id: userId }, data: { cartData: {} } });
-
     await decrementStock(items);
 
     if (user.email) {
@@ -184,6 +182,19 @@ const userOrders = async (req, res) => {
   }
 };
 
+// Single Order by ID (used by OrderSuccess on page reload)
+const singleOrder = async (req, res) => {
+  try {
+    const { orderId } = req.body;
+    if (!orderId) return res.json({ success: false, message: "orderId required" });
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return res.json({ success: false, message: "Order not found" });
+    res.json({ success: true, order: serializeOrder(order) });
+  } catch (error) {
+    res.json({ success: false, message: error.message });
+  }
+};
+
 // Update Status
 const updateStatus = async (req, res) => {
   try {
@@ -208,5 +219,6 @@ export {
   verifyChapaPayment,
   allOrders,
   userOrders,
+  singleOrder,
   updateStatus,
 };
