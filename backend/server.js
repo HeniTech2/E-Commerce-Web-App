@@ -10,6 +10,7 @@ import productRouter from "./routes/productRoute.js";
 import cartRouter from "./routes/cartRoute.js";
 import orderRouter from "./routes/orderRoute.js";
 import wishlistRouter from "./routes/wishlistRoute.js";
+import contentRouter from "./routes/contentRoute.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -19,7 +20,6 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
 
-// General limiter
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 1000,
@@ -27,14 +27,12 @@ const limiter = rateLimit({
     skip: (req) => req.path.startsWith("/uploads"),
 });
 
-// Auth limiter
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 20,
     message: { success: false, message: "Too many login attempts, please try again later." },
 });
 
-// Admin action limiter
 const adminLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 500,
@@ -70,6 +68,7 @@ app.use("/api/product", adminLimiter, productRouter);
 app.use("/api/cart", limiter, cartRouter);
 app.use("/api/order", limiter, orderRouter);
 app.use("/api/wishlist", limiter, wishlistRouter);
+app.use("/api/content", limiter, contentRouter);
 
 app.get("/", (req, res) => res.json({ success: true, message: "Marqato API running" }));
 
