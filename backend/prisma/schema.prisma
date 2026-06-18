@@ -13,6 +13,7 @@ model User {
   email     String   @unique
   password  String
   cartData  Json     @default("{}")
+  wishlist  String[] @default([])
   orders    Order[]
   createdAt DateTime @default(now())
 }
@@ -55,4 +56,41 @@ model SiteContent {
   link      String?
   active    Boolean  @default(true)
   updatedAt DateTime @updatedAt
+}
+
+model NavItem {
+  id        String   @id @default(uuid())
+  label     String
+  href      String
+  order     Int      @default(0)
+  isVisible Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model FooterSection {
+  id        String      @id @default(uuid())
+  title     String
+  order     Int         @default(0)
+  links     FooterLink[]
+  createdAt DateTime    @default(now())
+}
+
+model FooterLink {
+  id        String        @id @default(uuid())
+  label     String
+  href      String
+  order     Int           @default(0)
+  sectionId String
+  section   FooterSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+}
+
+model PageSection {
+  id        String   @id @default(uuid())
+  type      String   @default("text")
+  title     String?
+  body      String?
+  imageUrl  String?
+  order     Int      @default(0)
+  isVisible Boolean  @default(true)
+  createdAt DateTime @default(now())
 }

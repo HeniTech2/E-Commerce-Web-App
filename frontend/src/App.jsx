@@ -19,6 +19,7 @@ import AdminProducts from "./admin/pages/Products";
 import AdminOrders from "./admin/pages/Orders";
 import AdminLogin from "./admin/pages/AdminLogin";
 import AdminSettings from "./admin/pages/Settings";
+import AdminCustomizer from "./admin/pages/Customizer";
 import { ThemeProvider } from "./admin/context/ThemeContext";
 import { StorefrontThemeProvider } from "./context/StorefrontThemeContext";
 import StorefrontBackground from "./components/StorefrontBackground";
@@ -40,6 +41,7 @@ function App() {
         <Route path="products" element={<AdminProducts />} />
         <Route path="orders" element={<AdminOrders />} />
         <Route path="settings" element={<AdminSettings />} />
+        <Route path="customizer" element={<AdminCustomizer />} />
       </Route>
 
       {/* Storefront */}

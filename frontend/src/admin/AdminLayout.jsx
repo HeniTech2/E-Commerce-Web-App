@@ -5,6 +5,7 @@ import {
   HiOutlineClipboardList,
   HiOutlineLogout,
   HiOutlineCog,
+  HiOutlineColorSwatch,
 } from "react-icons/hi";
 import { useTheme } from "./context/ThemeContext";
 
@@ -87,6 +88,7 @@ const AdminLayout = () => {
             { to: "/admin/products", icon: HiOutlineCube, label: "Products" },
             { to: "/admin/orders", icon: HiOutlineClipboardList, label: "Orders" },
             { to: "/admin/settings", icon: HiOutlineCog, label: "Settings" },
+            { to: "/admin/customizer", icon: HiOutlineColorSwatch, label: "Customizer" },
           ].map(({ to, end, icon: Icon, label }) => (
             <NavLink
               key={to}

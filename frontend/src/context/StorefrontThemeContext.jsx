@@ -4,7 +4,7 @@ import { getAdminSettings } from "../api";
 const StorefrontThemeContext = createContext({});
 
 export const SF_DEFAULTS = {
-  // background
+  // global background
   storefrontBgUrl: "",
   storefrontBgOverlay: 0.35,
   // colors & fonts
@@ -23,11 +23,28 @@ export const SF_DEFAULTS = {
   heroBadge: "Addis Ababa · New for 2026",
   heroPrimaryBtn: "Browse products",
   heroSecondaryBtn: "Our story",
-  // banner image (shown inside hero right side instead of product grid)
   heroBannerUrl: "",
   // sections
   featuredTitle: "Best pickings this week",
   categoryTitle: "Browse by category",
+
+  // ── Navbar ───────────────────────────────────────────────
+  navBg: "#FFFFFF",
+  navText: "#1C1917",
+  navLinkColor: "#1C1917",
+  navLinkHover: "#4F46E5",
+
+  // ── Per-section backgrounds ──────────────────────────────
+  heroSectionBg: "",
+  heroSectionColor: "",
+  categorySectionBg: "",
+  categorySectionColor: "",
+  featuredSectionBg: "",
+  featuredSectionColor: "",
+  paymentSectionBg: "",
+  paymentSectionColor: "",
+  newsletterSectionBg: "",
+  newsletterSectionColor: "",
 };
 
 export const StorefrontThemeProvider = ({ children }) => {

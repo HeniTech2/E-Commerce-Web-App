@@ -11,6 +11,7 @@ import cartRouter from "./routes/cartRoute.js";
 import orderRouter from "./routes/orderRoute.js";
 import wishlistRouter from "./routes/wishlistRoute.js";
 import contentRouter from "./routes/contentRoute.js";
+import customizerRouter from "./routes/customizerRoute.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -69,6 +70,7 @@ app.use("/api/cart", limiter, cartRouter);
 app.use("/api/order", limiter, orderRouter);
 app.use("/api/wishlist", limiter, wishlistRouter);
 app.use("/api/content", limiter, contentRouter);
+app.use("/api/customizer", limiter, customizerRouter);
 
 app.get("/", (req, res) => res.json({ success: true, message: "Marqato API running" }));
 

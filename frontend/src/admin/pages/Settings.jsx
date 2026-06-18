@@ -12,6 +12,7 @@ import {
   HiOutlineSpeakerphone,
   HiOutlineTemplate,
   HiOutlinePencil,
+  HiOutlineMenuAlt2,
 } from "react-icons/hi";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -129,6 +130,45 @@ const ImageUploadBox = ({ label, hint, value, uploading, onUpload, onRemove }) =
     </div>
   );
 };
+
+// ── Section BG editor (image + color for one section) ────────────────────────
+const SectionBgEditor = ({ label, bgKey, colorKey, theme, handle, uploadFile, uploading }) => (
+  <div className="border border-slate-100 rounded-2xl p-4 mb-4">
+    <p className="text-sm font-semibold text-slate-700 mb-3">{label}</p>
+    <div className="mb-3">
+      <p className="text-xs font-medium text-slate-600 mb-2">Background color</p>
+      <div className="flex items-center gap-3">
+        <label className="cursor-pointer">
+          <div
+            className="w-9 h-9 rounded-xl border-2 border-white shadow-md transition-transform hover:scale-110"
+            style={{ background: theme[colorKey] || "#ffffff" }}
+          />
+          <input
+            type="color"
+            value={theme[colorKey] || "#ffffff"}
+            onChange={(e) => handle(colorKey)(e.target.value)}
+            className="sr-only"
+          />
+        </label>
+        <span className="text-xs font-mono text-slate-400">{theme[colorKey] || "#ffffff"}</span>
+        {theme[colorKey] && (
+          <button onClick={() => handle(colorKey)("")} className="text-xs text-red-400 hover:text-red-600">
+            ✕ Clear
+          </button>
+        )}
+      </div>
+    </div>
+    <Field label="Background image" hint="Overrides color if set">
+      <ImageUploadBox
+        label={label}
+        value={theme[bgKey] || ""}
+        uploading={uploading}
+        onUpload={(file) => uploadFile(file, bgKey)}
+        onRemove={() => handle(bgKey)("")}
+      />
+    </Field>
+  </div>
+);
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
@@ -478,6 +518,34 @@ const Settings = () => {
               </div>
             </Section>
 
+            {/* Navbar colors */}
+            <Section icon={HiOutlineMenuAlt2} title="Navbar" subtitle="Customer-facing navigation bar">
+              <ColorRow label="Navbar background" value={theme.navBg || "#FFFFFF"} onChange={handle("navBg")} />
+              <ColorRow label="Navbar text color" value={theme.navText || "#1C1917"} onChange={handle("navText")} />
+              <ColorRow label="Nav link color" value={theme.navLinkColor || "#1C1917"} onChange={handle("navLinkColor")} />
+              <ColorRow label="Nav link hover color" value={theme.navLinkHover || "#4F46E5"} onChange={handle("navLinkHover")} />
+              {/* Live mini preview */}
+              <div
+                className="mt-4 rounded-xl px-4 py-3 flex items-center justify-between"
+                style={{ background: theme.navBg || "#FFFFFF", border: "1px solid #E2E8F0" }}
+              >
+                <span className="font-bold text-sm" style={{ color: theme.navText || "#1C1917" }}>
+                  {theme.brandName || "Marqato"}
+                </span>
+                <div className="flex gap-4">
+                  {["Home", "Shop", "About"].map((l, i) => (
+                    <span
+                      key={l}
+                      className="text-xs font-medium"
+                      style={{ color: i === 0 ? theme.navLinkHover || "#4F46E5" : theme.navLinkColor || "#1C1917" }}
+                    >
+                      {l}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </Section>
+
             {/* Hero content */}
             <Section icon={HiOutlinePencil} title="Hero Section" subtitle="The big banner customers see first">
               <div className="space-y-4">
@@ -519,6 +587,7 @@ const Settings = () => {
 
           {/* RIGHT */}
           <div>
+            {/* Storefront Colors & Fonts */}
             <Section icon={HiOutlineColorSwatch} title="Storefront Colors & Fonts" subtitle="Applied on the customer-facing site">
               <ColorRow label="Primary color" value={theme.sfPrimaryColor} onChange={handle("sfPrimaryColor")} />
               <div className="py-3">
@@ -537,6 +606,7 @@ const Settings = () => {
               </div>
             </Section>
 
+            {/* Hero Banner Image */}
             <Section icon={HiOutlinePhotograph} title="Hero Banner Image" subtitle="Shown on the right side of your hero section">
               <ImageUploadBox
                 label="Hero banner"
@@ -548,15 +618,66 @@ const Settings = () => {
               />
             </Section>
 
+            {/* Per-section backgrounds */}
+            <Section icon={HiOutlineGlobe} title="Section Backgrounds" subtitle="Set a background image or color for each storefront section">
+              <SectionBgEditor
+                label="Hero Section"
+                bgKey="heroSectionBg"
+                colorKey="heroSectionColor"
+                theme={theme}
+                handle={handle}
+                uploadFile={uploadFile}
+                uploading={uploading}
+              />
+              <SectionBgEditor
+                label="Categories Section"
+                bgKey="categorySectionBg"
+                colorKey="categorySectionColor"
+                theme={theme}
+                handle={handle}
+                uploadFile={uploadFile}
+                uploading={uploading}
+              />
+              <SectionBgEditor
+                label="Bestsellers Section"
+                bgKey="featuredSectionBg"
+                colorKey="featuredSectionColor"
+                theme={theme}
+                handle={handle}
+                uploadFile={uploadFile}
+                uploading={uploading}
+              />
+              <SectionBgEditor
+                label="Payment Strip"
+                bgKey="paymentSectionBg"
+                colorKey="paymentSectionColor"
+                theme={theme}
+                handle={handle}
+                uploadFile={uploadFile}
+                uploading={uploading}
+              />
+              <SectionBgEditor
+                label="Newsletter Section"
+                bgKey="newsletterSectionBg"
+                colorKey="newsletterSectionColor"
+                theme={theme}
+                handle={handle}
+                uploadFile={uploadFile}
+                uploading={uploading}
+              />
+            </Section>
+
             {/* Live storefront preview */}
             <div className="rounded-2xl border p-5" style={{ background: "var(--admin-card-bg)", borderColor: "#E2E8F0" }}>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Hero preview</p>
               <div
                 className="rounded-xl p-5 relative overflow-hidden"
                 style={{
-                  background: theme.storefrontBgUrl
-                    ? `linear-gradient(rgba(255,255,255,${theme.storefrontBgOverlay ?? 0.35}), rgba(255,255,255,${theme.storefrontBgOverlay ?? 0.35})), url('${theme.storefrontBgUrl}') center/cover`
-                    : "#F8FAFC",
+                  background: theme.heroSectionBg
+                    ? `url('${theme.heroSectionBg}') center/cover`
+                    : theme.heroSectionColor || (theme.storefrontBgUrl
+                      ? `linear-gradient(rgba(255,255,255,${theme.storefrontBgOverlay ?? 0.35}), rgba(255,255,255,${theme.storefrontBgOverlay ?? 0.35})), url('${theme.storefrontBgUrl}') center/cover`
+                      : "#F8FAFC"),
                   fontFamily: theme.sfFontFamily,
                 }}
               >
