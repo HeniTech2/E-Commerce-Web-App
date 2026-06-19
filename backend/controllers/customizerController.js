@@ -67,7 +67,6 @@ export const deleteNav = async (req, res) => {
 
 export const reorderNav = async (req, res) => {
   try {
-    // ids: array of ids in new order
     const { ids } = req.body;
     await Promise.all(ids.map((id, index) => prisma.navItem.update({ where: { id }, data: { order: index } })));
     res.json({ success: true });
@@ -188,9 +187,10 @@ export const listSections = async (req, res) => {
 
 export const createSection = async (req, res) => {
   try {
-    const { type, title, body, order, isVisible } = req.body;
-    let imageUrl;
-    if (req.file) imageUrl = `${process.env.BASE_URL}/uploads/${req.file.filename}`;
+    const { type, title, body, order, isVisible, bgColor, position } = req.body;
+    let imageUrl, bgImageUrl;
+    if (req.files?.image?.[0]) imageUrl = `${process.env.BASE_URL}/uploads/${req.files.image[0].filename}`;
+    if (req.files?.bgImage?.[0]) bgImageUrl = `${process.env.BASE_URL}/uploads/${req.files.bgImage[0].filename}`;
     const section = await prisma.pageSection.create({
       data: {
         type: type || "text",
@@ -198,7 +198,10 @@ export const createSection = async (req, res) => {
         body: body || "",
         order: Number(order ?? 0),
         isVisible: isVisible !== false && isVisible !== "false",
+        position: position || "center",
+        bgColor: bgColor || null,
         ...(imageUrl && { imageUrl }),
+        ...(bgImageUrl && { bgImageUrl }),
       },
     });
     res.json({ success: true, section });
@@ -209,13 +212,27 @@ export const createSection = async (req, res) => {
 
 export const updateSection = async (req, res) => {
   try {
-    const { id, type, title, body, order, isVisible } = req.body;
+    const { id, type, title, body, order, isVisible, bgColor, position, removeImage, removeBgImage } = req.body;
+    const existing = await prisma.pageSection.findUnique({ where: { id } });
+
     let imageUrl;
-    if (req.file) {
-      imageUrl = `${process.env.BASE_URL}/uploads/${req.file.filename}`;
-      const existing = await prisma.pageSection.findUnique({ where: { id } });
+    if (req.files?.image?.[0]) {
+      imageUrl = `${process.env.BASE_URL}/uploads/${req.files.image[0].filename}`;
       if (existing?.imageUrl) deleteFile(existing.imageUrl);
+    } else if (removeImage === "true" || removeImage === true) {
+      if (existing?.imageUrl) deleteFile(existing.imageUrl);
+      imageUrl = "";
     }
+
+    let bgImageUrl;
+    if (req.files?.bgImage?.[0]) {
+      bgImageUrl = `${process.env.BASE_URL}/uploads/${req.files.bgImage[0].filename}`;
+      if (existing?.bgImageUrl) deleteFile(existing.bgImageUrl);
+    } else if (removeBgImage === "true" || removeBgImage === true) {
+      if (existing?.bgImageUrl) deleteFile(existing.bgImageUrl);
+      bgImageUrl = "";
+    }
+
     const section = await prisma.pageSection.update({
       where: { id },
       data: {
@@ -224,7 +241,10 @@ export const updateSection = async (req, res) => {
         ...(body !== undefined && { body }),
         ...(order !== undefined && { order: Number(order) }),
         ...(isVisible !== undefined && { isVisible: isVisible === true || isVisible === "true" }),
-        ...(imageUrl && { imageUrl }),
+        ...(position !== undefined && { position }),
+        ...(bgColor !== undefined && { bgColor: bgColor || null }),
+        ...(imageUrl !== undefined && { imageUrl: imageUrl || null }),
+        ...(bgImageUrl !== undefined && { bgImageUrl: bgImageUrl || null }),
       },
     });
     res.json({ success: true, section });
@@ -238,6 +258,7 @@ export const deleteSection = async (req, res) => {
     const { id } = req.body;
     const existing = await prisma.pageSection.findUnique({ where: { id } });
     if (existing?.imageUrl) deleteFile(existing.imageUrl);
+    if (existing?.bgImageUrl) deleteFile(existing.bgImageUrl);
     await prisma.pageSection.delete({ where: { id } });
     res.json({ success: true });
   } catch (e) {
@@ -250,6 +271,75 @@ export const reorderSections = async (req, res) => {
     const { ids } = req.body;
     await Promise.all(ids.map((id, index) => prisma.pageSection.update({ where: { id }, data: { order: index } })));
     res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false, message: e.message });
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  LOGO / BRAND SETTINGS
+//  Stored in SiteContent with key = "brand_settings"
+// ══════════════════════════════════════════════════════════════════════════════
+
+export const getBrand = async (req, res) => {
+  try {
+    const record = await prisma.siteContent.findUnique({ where: { key: "brand_settings" } });
+    if (!record) return res.json({ success: true, brand: { logoUrl: "", brandName: "Marqato", logoText: "MQ" } });
+    let brand = { logoUrl: "", brandName: "Marqato", logoText: "MQ" };
+    try { brand = { ...brand, ...JSON.parse(record.body || "{}") }; } catch (_) {}
+    if (record.image) brand.logoUrl = record.image;
+    res.json({ success: true, brand });
+  } catch (e) {
+    res.json({ success: false, message: e.message });
+  }
+};
+
+export const updateBrand = async (req, res) => {
+  try {
+    const { brandName, logoText, removeImage } = req.body;
+    let logoUrl;
+
+    // Fetch existing record to handle old image deletion
+    const existing = await prisma.siteContent.findUnique({ where: { key: "brand_settings" } });
+    let currentBrand = { logoUrl: "", brandName: "Marqato", logoText: "MQ" };
+    try { currentBrand = { ...currentBrand, ...JSON.parse(existing?.body || "{}") }; } catch (_) {}
+    if (existing?.image) currentBrand.logoUrl = existing.image;
+
+    // Handle new logo upload
+    if (req.file) {
+      if (currentBrand.logoUrl) deleteFile(currentBrand.logoUrl);
+      logoUrl = `${process.env.BASE_URL}/uploads/${req.file.filename}`;
+    }
+
+    // Handle remove image
+    if (removeImage === "true" || removeImage === true) {
+      if (currentBrand.logoUrl) deleteFile(currentBrand.logoUrl);
+      logoUrl = "";
+    }
+
+    const newBrand = {
+      logoUrl: logoUrl !== undefined ? logoUrl : currentBrand.logoUrl,
+      brandName: brandName !== undefined ? brandName : currentBrand.brandName,
+      logoText: logoText !== undefined ? logoText : currentBrand.logoText,
+    };
+
+    const record = await prisma.siteContent.upsert({
+      where: { key: "brand_settings" },
+      update: {
+        body: JSON.stringify(newBrand),
+        image: newBrand.logoUrl || null,
+        title: newBrand.brandName,
+      },
+      create: {
+        key: "brand_settings",
+        title: newBrand.brandName,
+        body: JSON.stringify(newBrand),
+        image: newBrand.logoUrl || null,
+        active: true,
+      },
+    });
+
+    res.json({ success: true, brand: newBrand });
   } catch (e) {
     res.json({ success: false, message: e.message });
   }
