@@ -6,6 +6,7 @@ import {
   listFooter, createFooterSection, updateFooterSection, deleteFooterSection,
   createFooterLink, updateFooterLink, deleteFooterLink,
   listSections, createSection, updateSection, deleteSection, reorderSections,
+  getBrand, updateBrand,
 } from "../controllers/customizerController.js";
 
 const customizerRouter = express.Router();
@@ -28,9 +29,13 @@ customizerRouter.post("/footer/link/delete",       adminAuth, deleteFooterLink);
 
 // ── Page sections (public read, admin write) ───────────────────────────────────
 customizerRouter.get("/sections",                  listSections);
-customizerRouter.post("/sections/create",          adminAuth, upload.single("image"), createSection);
-customizerRouter.post("/sections/update",          adminAuth, upload.single("image"), updateSection);
+customizerRouter.post("/sections/create",          adminAuth, upload.fields([{ name: "image", maxCount: 1 }, { name: "bgImage", maxCount: 1 }]), createSection);
+customizerRouter.post("/sections/update",          adminAuth, upload.fields([{ name: "image", maxCount: 1 }, { name: "bgImage", maxCount: 1 }]), updateSection);
 customizerRouter.post("/sections/delete",          adminAuth, deleteSection);
 customizerRouter.post("/sections/reorder",         adminAuth, reorderSections);
+
+// ── Brand / Logo (public read, admin write) ────────────────────────────────────
+customizerRouter.get("/brand",                     getBrand);
+customizerRouter.post("/brand/update",             adminAuth, upload.single("logo"), updateBrand);
 
 export default customizerRouter;
