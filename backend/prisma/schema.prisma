@@ -85,12 +85,15 @@ model FooterLink {
 }
 
 model PageSection {
-  id        String   @id @default(uuid())
-  type      String   @default("text")
-  title     String?
-  body      String?
-  imageUrl  String?
-  order     Int      @default(0)
-  isVisible Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  type       String   @default("text")
+  title      String?
+  body       String?
+  imageUrl   String?
+  bgColor    String?
+  bgImageUrl String?
+  position   String   @default("center")
+  order      Int      @default(0)
+  isVisible  Boolean  @default(true)
+  createdAt  DateTime @default(now())
 }
