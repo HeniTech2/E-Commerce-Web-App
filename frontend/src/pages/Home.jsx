@@ -4,6 +4,7 @@ import { HiArrowRight } from "react-icons/hi";
 import { ShopContext } from "../context/ShopContext";
 import { useStorefrontTheme, SF_DEFAULTS } from "../context/StorefrontThemeContext";
 import ProductCard from "../components/ProductCard";
+import DynamicSections from "../components/DynamicSections";
 
 const categoryIcons = {
   habesha: "👗",
@@ -215,6 +216,9 @@ const Home = () => {
           </div>
         </div>
       </section>
+
+      {/* ── Custom sections created in Admin Customizer ─────────── */}
+      <DynamicSections />
     </div>
   );
 };
