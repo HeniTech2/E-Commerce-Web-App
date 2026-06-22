@@ -14,7 +14,7 @@ import contentRouter from "./routes/contentRoute.js";
 import customizerRouter from "./routes/customizerRoute.js";
 
 const app = express();
-app.set('trust proxy', 1); // ← ADDED FOR RAILWAY
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
 // ── Security ──────────────────────────────────────────────────────
@@ -43,10 +43,12 @@ const adminLimiter = rateLimit({
 
 // ── CORS ──────────────────────────────────────────────────────────
 const allowedOrigins = [
-    process.env.CLIENT_URL || "http://localhost:5173",
     "http://localhost:5173",
     "http://localhost:3000",
-];
+    "https://marqato.netlify.app",
+    "https://e-commerce-web-app-nine-puce.vercel.app",
+    process.env.CLIENT_URL,
+].filter(Boolean);
 
 app.use(cors({
     origin: (origin, callback) => {
