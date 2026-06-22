@@ -14,6 +14,7 @@ import contentRouter from "./routes/contentRoute.js";
 import customizerRouter from "./routes/customizerRoute.js";
 
 const app = express();
+app.set('trust proxy', 1); // ← ADDED FOR RAILWAY
 const PORT = process.env.PORT || 5000;
 
 // ── Security ──────────────────────────────────────────────────────
