@@ -9,13 +9,15 @@ cloudinary.config({
 });
 
 const storage = new CloudinaryStorage({
-    cloudinary,
+    cloudinary: cloudinary,
     params: {
         folder: "marqato",
         allowed_formats: ["jpg", "jpeg", "png", "webp"],
     },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+    storage: storage,
+});
 
 export default upload;
