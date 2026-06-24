@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { useState } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   HiOutlineViewGrid,
   HiOutlineCube,
@@ -12,44 +12,23 @@ import {
 } from "react-icons/hi";
 import { useTheme } from "./context/ThemeContext";
 
-const NAV_ITEMS = [
-  { to: "/admin", end: true, icon: HiOutlineViewGrid, label: "Dashboard" },
-  { to: "/admin/products", icon: HiOutlineCube, label: "Products" },
-  { to: "/admin/orders", icon: HiOutlineClipboardList, label: "Orders" },
-  { to: "/admin/settings", icon: HiOutlineCog, label: "Settings" },
-  { to: "/admin/customizer", icon: HiOutlineColorSwatch, label: "Customizer" },
-];
-
 const AdminLayout = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { theme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // Close sidebar on route change (mobile navigation)
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [location.pathname]);
-
-  // Close sidebar on Escape key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === "Escape") setSidebarOpen(false);
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  // Prevent body scroll when mobile sidebar is open
-  useEffect(() => {
-    document.body.style.overflow = sidebarOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
-  }, [sidebarOpen]);
 
   const handleLogout = () => {
     localStorage.removeItem("marqato_token");
     navigate("/admin/login");
   };
+
+  const navItems = [
+    { to: "/admin", end: true, icon: HiOutlineViewGrid, label: "Dashboard" },
+    { to: "/admin/products", icon: HiOutlineCube, label: "Products" },
+    { to: "/admin/orders", icon: HiOutlineClipboardList, label: "Orders" },
+    { to: "/admin/settings", icon: HiOutlineCog, label: "Settings" },
+    { to: "/admin/customizer", icon: HiOutlineColorSwatch, label: "Customizer" },
+  ];
 
   const linkClass = ({ isActive }) =>
     `flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
@@ -101,13 +80,14 @@ const AdminLayout = () => {
 
       {/* Nav */}
       <nav className="flex-1 px-4 py-6 space-y-1">
-        {NAV_ITEMS.map(({ to, end, icon: Icon, label }) => (
+        {navItems.map(({ to, end, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
             className={linkClass}
             style={({ isActive }) => (isActive ? activeBg : inactiveColor)}
+            onClick={() => setSidebarOpen(false)}
           >
             <Icon size={18} />
             {label}
@@ -117,7 +97,10 @@ const AdminLayout = () => {
 
       {/* Logout */}
       <button
-        onClick={handleLogout}
+        onClick={() => {
+          setSidebarOpen(false);
+          handleLogout();
+        }}
         className="flex items-center gap-3 px-4 py-2.5 mx-4 mb-6 rounded-xl text-sm font-medium transition-colors hover:bg-white/5"
         style={{ color: "var(--admin-sidebar-text)", opacity: 0.6 }}
       >
@@ -138,7 +121,7 @@ const AdminLayout = () => {
         fontSize: "var(--admin-font-size)",
       }}
     >
-      {/* ── Desktop Sidebar (hidden on mobile) ── */}
+      {/* ── DESKTOP Sidebar (md and above) ── */}
       <aside
         className="hidden md:flex w-64 flex-col shrink-0"
         style={{ background: "var(--admin-sidebar-bg)" }}
@@ -146,44 +129,37 @@ const AdminLayout = () => {
         <SidebarContent />
       </aside>
 
-      {/* ── Mobile Overlay ── */}
+      {/* ── MOBILE: Overlay backdrop ── */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 md:hidden"
           onClick={() => setSidebarOpen(false)}
-          aria-hidden="true"
         />
       )}
 
-      {/* ── Mobile Drawer Sidebar ── */}
+      {/* ── MOBILE: Drawer sidebar ── */}
       <aside
-        className={`
-          fixed top-0 left-0 z-50 h-full w-64 flex flex-col
-          md:hidden
-          transform transition-transform duration-300 ease-in-out
-          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-        `}
+        className={`fixed top-0 left-0 z-50 h-full w-64 flex flex-col transform transition-transform duration-300 ease-in-out md:hidden ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
         style={{ background: "var(--admin-sidebar-bg)" }}
-        aria-label="Admin navigation"
       >
         {/* Close button inside drawer */}
         <button
           onClick={() => setSidebarOpen(false)}
-          className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+          className="absolute top-4 right-4 p-1 rounded-lg hover:bg-white/10 transition-colors"
           style={{ color: "var(--admin-sidebar-text)" }}
-          aria-label="Close menu"
         >
           <HiX size={20} />
         </button>
-
         <SidebarContent />
       </aside>
 
-      {/* ── Main Content ── */}
-      <div className="flex-1 flex flex-col overflow-x-hidden min-w-0">
+      {/* ── Main content area ── */}
+      <main className="flex-1 overflow-x-hidden flex flex-col">
         {/* Mobile top bar with hamburger */}
-        <header
-          className="md:hidden flex items-center gap-3 px-4 py-3 border-b shrink-0"
+        <div
+          className="flex md:hidden items-center gap-3 px-4 py-3 sticky top-0 z-30 border-b"
           style={{
             background: "var(--admin-sidebar-bg)",
             borderColor: "rgba(255,255,255,0.08)",
@@ -191,43 +167,24 @@ const AdminLayout = () => {
         >
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-xl hover:bg-white/10 transition-colors"
+            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
             style={{ color: "var(--admin-sidebar-text)" }}
-            aria-label="Open menu"
-            aria-expanded={sidebarOpen}
           >
             <HiMenu size={22} />
           </button>
+          <span
+            className="text-base font-bold"
+            style={{ color: "var(--admin-sidebar-text)" }}
+          >
+            {theme.brandName || "Admin"}
+          </span>
+        </div>
 
-          {/* Brand mark in top bar */}
-          <div className="flex items-center gap-2">
-            {theme.logoUrl ? (
-              <img
-                src={theme.logoUrl}
-                alt="logo"
-                className="w-7 h-7 rounded-lg object-contain bg-white/10"
-              />
-            ) : (
-              <span
-                className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-white text-xs"
-                style={{ background: "var(--admin-primary)" }}
-              >
-                {theme.brandName?.charAt(0) || "M"}
-              </span>
-            )}
-            <span
-              className="text-sm font-bold"
-              style={{ color: "var(--admin-sidebar-text)" }}
-            >
-              {theme.brandName}
-            </span>
-          </div>
-        </header>
-
-        <main className="flex-1 overflow-x-hidden">
+        {/* Page content */}
+        <div className="flex-1">
           <Outlet />
-        </main>
-      </div>
+        </div>
+      </main>
     </div>
   );
 };
