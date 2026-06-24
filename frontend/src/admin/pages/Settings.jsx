@@ -17,6 +17,19 @@ import {
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
+// Image-type setting keys (stored as multipart uploads, not JSON body)
+const IMAGE_KEYS = new Set([
+  "logoUrl",
+  "bgImageUrl",
+  "storefrontBgUrl",
+  "heroBannerUrl",
+  "heroSectionBg",
+  "categorySectionBg",
+  "featuredSectionBg",
+  "paymentSectionBg",
+  "newsletterSectionBg",
+]);
+
 // ── Reusable sub-components ───────────────────────────────────────────────────
 
 const Section = ({ icon: Icon, title, subtitle, children }) => (
@@ -25,12 +38,14 @@ const Section = ({ icon: Icon, title, subtitle, children }) => (
     style={{ background: "var(--admin-card-bg)", borderColor: "#E2E8F0" }}
   >
     <div className="flex items-center gap-3 mb-5">
-      <div
-        className="w-9 h-9 rounded-xl flex items-center justify-center"
-        style={{ background: "var(--admin-primary)", opacity: 0.15 }}
-      />
-      <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ position: "absolute" }}>
-        <Icon size={18} style={{ color: "var(--admin-primary)" }} />
+      <div className="relative w-9 h-9 flex-shrink-0">
+        <div
+          className="w-9 h-9 rounded-xl"
+          style={{ background: "var(--admin-primary)", opacity: 0.15 }}
+        />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Icon size={18} style={{ color: "var(--admin-primary)" }} />
+        </div>
       </div>
       <div>
         <h2 className="font-semibold text-base">{title}</h2>
@@ -189,6 +204,14 @@ const Settings = () => {
   const handle = (key) => (val) => {
     updateTheme(key, val);
     setSaved(false);
+    // If clearing an image key, delete it from the server too
+    if (val === "" && IMAGE_KEYS.has(key)) {
+      fetch(`${BASE_URL}/api/content/remove`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", token: localStorage.getItem("marqato_token") },
+        body: JSON.stringify({ key: `admin_${key}` }),
+      }).catch(() => {});
+    }
   };
 
   const handleSaveAll = () => {
@@ -196,29 +219,24 @@ const Settings = () => {
     setTimeout(() => setSaved(false), 2500);
   };
 
-  // Upload image to Cloudinary directly (bypasses Railway HTTP/2 multipart crash)
   const uploadFile = async (file, settingKey) => {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-    if (!cloudName || !uploadPreset) {
-      alert("Cloudinary env vars not set. Add VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET to Vercel.");
-      return;
-    }
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("upload_preset", uploadPreset);
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      const formData = new FormData();
+      formData.append("image", file);
+      formData.append("key", `admin_${settingKey}`);
+      formData.append("title", settingKey);
+      const token = localStorage.getItem("marqato_token");
+      const res = await fetch(`${BASE_URL}/api/content/save`, {
         method: "POST",
-        body: fd,
+        headers: { token },
+        body: formData,
       });
-      if (!res.ok) throw new Error("Cloudinary upload failed");
       const data = await res.json();
-      const url = data.secure_url;
-      await updateTheme(settingKey, url);
+      if (data.success && data.content?.image) {
+        await updateTheme(settingKey, data.content.image);
+      }
     } catch (e) {
-      alert(e.message || "Image upload failed");
       console.error(e);
     } finally {
       setUploading(false);
