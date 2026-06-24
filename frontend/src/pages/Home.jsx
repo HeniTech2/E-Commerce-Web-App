@@ -166,6 +166,9 @@ const Home = () => {
         </div>
       </section>
 
+      {/* ── Custom sections created in Admin Customizer ─────────── */}
+      <DynamicSections />
+
       {/* ── Payment trust strip ───────────────────────────────── */}
       <section
         style={sectionStyle("paymentSectionBg", "paymentSectionColor", t, { background: "#1C1917" })}
@@ -217,8 +220,6 @@ const Home = () => {
         </div>
       </section>
 
-      {/* ── Custom sections created in Admin Customizer ─────────── */}
-      <DynamicSections />
     </div>
   );
 };
