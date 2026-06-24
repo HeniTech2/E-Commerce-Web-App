@@ -26,7 +26,7 @@ const upsertContent = async (req, res) => {
 
         let image;
         if (req.file) {
-            image = `${process.env.BASE_URL}/uploads/${req.file.filename}`;
+            image = req.file.path; // Cloudinary returns the full URL in req.file.path
         }
 
         const existing = await prisma.siteContent.findUnique({ where: { key } });
