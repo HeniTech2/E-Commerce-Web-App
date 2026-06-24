@@ -90,9 +90,13 @@ model PageSection {
   title      String?
   body       String?
   imageUrl   String?
+  image2Url  String?
+  image3Url  String?
+  image4Url  String?
   bgColor    String?
   bgImageUrl String?
-  position   String   @default("center")
+  position      String   @default("center")
+  imagePosition String   @default("center")
   order      Int      @default(0)
   isVisible  Boolean  @default(true)
   createdAt  DateTime @default(now())

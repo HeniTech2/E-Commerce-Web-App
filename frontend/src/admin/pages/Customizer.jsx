@@ -707,7 +707,8 @@ const FooterManager = () => {
 const SectionTypeLabel = { text: "Text", image: "Image", text_image: "Text + Image" };
 const PositionLabel = { left: "Left", center: "Center", right: "Right" };
 
-const EMPTY_FORM = { type: "text", title: "", body: "", isVisible: true, position: "center", bgColor: "" };
+const EMPTY_FORM = { type: "text", title: "", body: "", isVisible: true, position: "center", imagePosition: "center", bgColor: "" };
+const EMPTY_IMAGES = { img1: null, img2: null, img3: null, img4: null, prev1: "", prev2: "", prev3: "", prev4: "", url1: "", url2: "", url3: "", url4: "" };
 
 const PageSectionsManager = () => {
   const [sections, setSections] = useState([]);
@@ -716,18 +717,17 @@ const PageSectionsManager = () => {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
 
-  // Image state: existing URL (string) + new file (File object) + preview URL
-  const [existingImageUrl, setExistingImageUrl] = useState("");
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState("");
-
+  // Image state for 4 slots + background
+  const [imgs, setImgs] = useState({ ...EMPTY_IMAGES });
   const [bgImageFile, setBgImageFile] = useState(null);
   const [bgImagePreview, setBgImagePreview] = useState("");
   const [existingBgImageUrl, setExistingBgImageUrl] = useState("");
   const bgFileRef = useRef();
-
   const [saving, setSaving] = useState(false);
-  const fileRef = useRef();
+  const fileRef1 = useRef();
+  const fileRef2 = useRef();
+  const fileRef3 = useRef();
+  const fileRef4 = useRef();
 
   const load = async () => {
     setLoading(true);
@@ -738,11 +738,6 @@ const PageSectionsManager = () => {
 
   useEffect(() => { load(); }, []);
 
-  // Clean up object URL
-  useEffect(() => {
-    return () => { if (imagePreview) URL.revokeObjectURL(imagePreview); };
-  }, [imagePreview]);
-
   // Clean up bg object URL
   useEffect(() => {
     return () => { if (bgImagePreview) URL.revokeObjectURL(bgImagePreview); };
@@ -752,22 +747,25 @@ const PageSectionsManager = () => {
     setForm({ ...EMPTY_FORM });
     setAdding(false);
     setEditId(null);
-    setExistingImageUrl("");
-    setImageFile(null);
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImagePreview("");
+    setImgs({ ...EMPTY_IMAGES });
     setExistingBgImageUrl("");
     setBgImageFile(null);
     if (bgImagePreview) URL.revokeObjectURL(bgImagePreview);
     setBgImagePreview("");
   };
 
-  const onImageChange = (e) => {
+  const onImageChange = (slot, e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
+    const prevKey = `prev${slot}`;
+    if (imgs[prevKey]) URL.revokeObjectURL(imgs[prevKey]);
+    setImgs((p) => ({ ...p, [`img${slot}`]: file, [prevKey]: URL.createObjectURL(file) }));
+  };
+
+  const removeImg = (slot) => {
+    const prevKey = `prev${slot}`;
+    if (imgs[prevKey]) URL.revokeObjectURL(imgs[prevKey]);
+    setImgs((p) => ({ ...p, [`img${slot}`]: null, [prevKey]: "", [`url${slot}`]: "" }));
   };
 
   const onBgImageChange = (e) => {
@@ -785,15 +783,7 @@ const PageSectionsManager = () => {
     setExistingBgImageUrl("");
   };
 
-  const removeImage = () => {
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImageFile(null);
-    setImagePreview("");
-    setExistingImageUrl("");
-  };
 
-  // The image currently shown (new preview or saved URL)
-  const currentImage = imagePreview || existingImageUrl;
 
   const save = async () => {
     setSaving(true);
@@ -804,17 +794,24 @@ const PageSectionsManager = () => {
     fd.append("body", form.body || "");
     fd.append("isVisible", String(form.isVisible));
     fd.append("position", form.position || "center");
+    fd.append("imagePosition", form.imagePosition || "center");
     fd.append("bgColor", form.bgColor || "");
     fd.append("order", editId ? (sections.find((s) => s.id === editId)?.order ?? 0) : sections.length);
 
     if (editId) fd.append("id", editId);
 
-    // Attach new image file if chosen
-    if (imageFile) {
-      fd.append("image", imageFile);
-    } else if (editId && !existingImageUrl) {
-      fd.append("removeImage", "true");
-    }
+    // Attach up to 4 image files
+    const imgKeys = ["image", "image2", "image3", "image4"];
+    const imgFields = [imgs.img1, imgs.img2, imgs.img3, imgs.img4];
+    const urlFields = [imgs.url1, imgs.url2, imgs.url3, imgs.url4];
+    const removeKeys = ["removeImage", "removeImage2", "removeImage3", "removeImage4"];
+    imgKeys.forEach((key, i) => {
+      if (imgFields[i]) {
+        fd.append(key, imgFields[i]);
+      } else if (editId && !urlFields[i]) {
+        fd.append(removeKeys[i], "true");
+      }
+    });
 
     // Attach new background image file if chosen
     if (bgImageFile) {
@@ -874,12 +871,17 @@ const PageSectionsManager = () => {
       body: section.body || "",
       isVisible: section.isVisible,
       position: section.position || "center",
+      imagePosition: section.imagePosition || "center",
       bgColor: section.bgColor || "",
     });
-    setExistingImageUrl(section.imageUrl || "");
-    setImageFile(null);
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
-    setImagePreview("");
+    setImgs({
+      img1: null, img2: null, img3: null, img4: null,
+      prev1: "", prev2: "", prev3: "", prev4: "",
+      url1: section.imageUrl  || "",
+      url2: section.image2Url || "",
+      url3: section.image3Url || "",
+      url4: section.image4Url || "",
+    });
     setExistingBgImageUrl(section.bgImageUrl || "");
     setBgImageFile(null);
     if (bgImagePreview) URL.revokeObjectURL(bgImagePreview);
@@ -940,62 +942,103 @@ const PageSectionsManager = () => {
               </div>
             )}
 
-            {/* Image upload */}
+            {/* Image upload — 4 slots */}
             {(form.type === "image" || form.type === "text_image") && (
               <div>
-                <label className="text-xs text-slate-500 mb-1.5 block">Image</label>
-                {currentImage ? (
-                  <div className="relative h-36 rounded-xl overflow-hidden mb-2 border border-slate-100">
-                    <img src={currentImage} alt="section preview" className="w-full h-full object-cover" />
-                    <button
-                      onClick={removeImage}
-                      className="absolute top-2 right-2 bg-white/90 hover:bg-white rounded-lg p-1 text-red-500 shadow"
-                    >
-                      <HiOutlineX size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    className="border-2 border-dashed border-slate-200 rounded-xl h-28 flex flex-col items-center justify-center text-slate-400 text-sm mb-2 cursor-pointer hover:border-indigo-300 hover:text-indigo-400 transition-colors gap-1"
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    <HiOutlinePhotograph size={22} />
-                    <span>Click to upload image</span>
-                  </div>
-                )}
-                <Btn onClick={() => fileRef.current?.click()}>
-                  <HiOutlineUpload size={14} /> {currentImage ? "Change image" : "Upload image"}
-                </Btn>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  onChange={onImageChange}
-                />
+                <label className="text-xs text-slate-500 mb-2 block font-medium">
+                  Images <span className="text-slate-300">(up to 4 — displayed as a grid)</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {[1, 2, 3, 4].map((slot) => {
+                    const refs = [fileRef1, fileRef2, fileRef3, fileRef4];
+                    const cur = imgs[`prev${slot}`] || imgs[`url${slot}`];
+                    return (
+                      <div key={slot}>
+                        <p className="text-xs text-slate-400 mb-1">Image {slot}</p>
+                        {cur ? (
+                          <div className="relative h-28 rounded-xl overflow-hidden border border-slate-100">
+                            <img src={cur} alt={`Image ${slot}`} className="w-full h-full object-cover" />
+                            <button
+                              onClick={() => removeImg(slot)}
+                              className="absolute top-1.5 right-1.5 bg-white/90 hover:bg-white rounded-lg p-1 text-red-500 shadow"
+                            >
+                              <HiOutlineX size={13} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div
+                            className="border-2 border-dashed border-slate-200 rounded-xl h-28 flex flex-col items-center justify-center text-slate-400 text-xs cursor-pointer hover:border-indigo-300 hover:text-indigo-400 transition-colors gap-1"
+                            onClick={() => refs[slot - 1].current?.click()}
+                          >
+                            <HiOutlinePhotograph size={20} />
+                            <span>Click to upload</span>
+                          </div>
+                        )}
+                        <input
+                          ref={refs[slot - 1]}
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(e) => onImageChange(slot, e)}
+                        />
+                        <button
+                          onClick={() => refs[slot - 1].current?.click()}
+                          className="mt-1.5 text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+                        >
+                          {cur ? "Change" : "Upload"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
-            {/* Position */}
-            <div>
-              <label className="text-xs text-slate-500 mb-1.5 block">Layout position</label>
-              <div className="flex gap-2">
-                {Object.entries(PositionLabel).map(([val, lbl]) => (
-                  <button
-                    key={val}
-                    onClick={() => setForm((p) => ({ ...p, position: val }))}
-                    className="px-3 py-1.5 rounded-xl text-xs font-medium border transition-all"
-                    style={
-                      form.position === val
-                        ? { background: "var(--admin-primary)", color: "#fff", borderColor: "transparent" }
-                        : { borderColor: "#E2E8F0", color: "#64748B" }
-                    }
-                  >
-                    {lbl}
-                  </button>
-                ))}
+            {/* Text position */}
+            {(form.type === "text" || form.type === "text_image") && (
+              <div>
+                <label className="text-xs text-slate-500 mb-1.5 block">Text position</label>
+                <div className="flex gap-2">
+                  {Object.entries(PositionLabel).map(([val, lbl]) => (
+                    <button
+                      key={val}
+                      onClick={() => setForm((p) => ({ ...p, position: val }))}
+                      className="px-3 py-1.5 rounded-xl text-xs font-medium border transition-all"
+                      style={
+                        form.position === val
+                          ? { background: "var(--admin-primary)", color: "#fff", borderColor: "transparent" }
+                          : { borderColor: "#E2E8F0", color: "#64748B" }
+                      }
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Image position */}
+            {(form.type === "image" || form.type === "text_image") && (
+              <div>
+                <label className="text-xs text-slate-500 mb-1.5 block">Image position</label>
+                <div className="flex gap-2">
+                  {Object.entries(PositionLabel).map(([val, lbl]) => (
+                    <button
+                      key={val}
+                      onClick={() => setForm((p) => ({ ...p, imagePosition: val }))}
+                      className="px-3 py-1.5 rounded-xl text-xs font-medium border transition-all"
+                      style={
+                        form.imagePosition === val
+                          ? { background: "var(--admin-primary)", color: "#fff", borderColor: "transparent" }
+                          : { borderColor: "#E2E8F0", color: "#64748B" }
+                      }
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Background color */}
             <div>
@@ -1087,9 +1130,16 @@ const PageSectionsManager = () => {
                 <button onClick={() => move(idx, 1)} disabled={idx === sections.length - 1} className="p-0.5 hover:text-indigo-500 disabled:opacity-20 transition-colors"><HiOutlineChevronDown size={14} /></button>
               </div>
 
-              {/* Thumbnail */}
-              {section.imageUrl ? (
-                <img src={section.imageUrl} alt={section.title} className="w-14 h-14 rounded-xl object-cover shrink-0 border border-slate-100" />
+              {/* Thumbnail — show up to 4 images in mini grid */}
+              {(section.imageUrl || section.image2Url || section.image3Url || section.image4Url) ? (
+                <div className="grid grid-cols-2 gap-0.5 w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-slate-100">
+                  {[section.imageUrl, section.image2Url, section.image3Url, section.image4Url]
+                    .filter(Boolean)
+                    .slice(0, 4)
+                    .map((url, i) => (
+                      <img key={i} src={url} alt="" className="w-full h-full object-cover" />
+                    ))}
+                </div>
               ) : (
                 <div className="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center text-slate-300 shrink-0">
                   <HiOutlinePhotograph size={20} />
