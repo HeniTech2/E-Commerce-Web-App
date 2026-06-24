@@ -118,9 +118,6 @@ export const saveAdminSetting = async (key, value) => {
     });
   }
 
-  // images are handled separately via multipart in Settings.jsx
-  if (key === "logoUrl" || key === "bgImageUrl") return;
-
   return api("/api/content/save", {
     method: "POST",
     body: JSON.stringify({

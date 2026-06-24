@@ -196,24 +196,29 @@ const Settings = () => {
     setTimeout(() => setSaved(false), 2500);
   };
 
+  // Upload image to Cloudinary directly (bypasses Railway HTTP/2 multipart crash)
   const uploadFile = async (file, settingKey) => {
+    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+    if (!cloudName || !uploadPreset) {
+      alert("Cloudinary env vars not set. Add VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET to Vercel.");
+      return;
+    }
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("image", file);
-      formData.append("key", `admin_${settingKey}`);
-      formData.append("title", settingKey);
-      const token = localStorage.getItem("marqato_token");
-      const res = await fetch(`${BASE_URL}/api/content/save`, {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("upload_preset", uploadPreset);
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
         method: "POST",
-        headers: { token },
-        body: formData,
+        body: fd,
       });
+      if (!res.ok) throw new Error("Cloudinary upload failed");
       const data = await res.json();
-      if (data.success && data.content?.image) {
-        await updateTheme(settingKey, data.content.image);
-      }
+      const url = data.secure_url;
+      await updateTheme(settingKey, url);
     } catch (e) {
+      alert(e.message || "Image upload failed");
       console.error(e);
     } finally {
       setUploading(false);
