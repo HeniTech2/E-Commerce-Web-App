@@ -86,24 +86,42 @@ export const getWishlist = (userId) =>
 export const toggleWishlistAPI = (userId, productId) =>
   api("/api/wishlist/toggle", { method: "POST", body: JSON.stringify({ userId, productId }) });
 
-// ── Admin Settings (NEW) ──────────────────────────────────────────
+// ── Image keys — these are saved as item.image in the DB ─────────────────────
+const IMAGE_KEYS = new Set([
+  "logoUrl",
+  "bgImageUrl",
+  "storefrontBgUrl",
+  "heroBannerUrl",
+  "heroSectionBg",
+  "categorySectionBg",
+  "featuredSectionBg",
+  "paymentSectionBg",
+  "newsletterSectionBg",
+]);
+
+// ── Admin Settings ────────────────────────────────────────────────────────────
 export const getAdminSettings = async () => {
   const data = await api("/api/content/list");
   if (!data.success) return { success: false };
-  // filter only admin_* keys and rebuild as flat object
+
   const settings = {};
   (data.content || []).forEach((item) => {
-    if (item.key.startsWith("admin_")) {
-      const k = item.key.replace("admin_", "");
-      settings[k] = item.body || item.title || item.image || "";
+    if (!item.key.startsWith("admin_")) return;
+    const k = item.key.replace("admin_", "");
+    // Image fields are stored in item.image; text/color fields in item.body
+    if (IMAGE_KEYS.has(k)) {
+      settings[k] = item.image || "";
+    } else {
+      settings[k] = item.body ?? item.title ?? "";
     }
   });
+
   return { success: true, settings };
 };
 
 export const saveAdminSetting = async (key, value) => {
+  // Reset: delete all admin_* keys
   if (key === "__reset__") {
-    // delete all admin_* keys by saving empty values — simplest approach
     return api("/api/content/list").then(async (data) => {
       if (!data.success) return;
       const adminKeys = (data.content || [])
@@ -118,9 +136,10 @@ export const saveAdminSetting = async (key, value) => {
     });
   }
 
-  // images are handled separately via multipart in Settings.jsx
-  if (key === "logoUrl" || key === "bgImageUrl") return;
+  // Image keys are uploaded as multipart from Settings.jsx — skip here
+  if (IMAGE_KEYS.has(key)) return;
 
+  // Save text/color settings as body field
   return api("/api/content/save", {
     method: "POST",
     body: JSON.stringify({

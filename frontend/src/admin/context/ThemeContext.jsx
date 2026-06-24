@@ -47,6 +47,24 @@ export const DEFAULT_THEME = {
   // ── Section titles ────────────────────────────────────────────
   featuredTitle: "Best pickings this week",
   categoryTitle: "Browse by category",
+
+  // ── Navbar ───────────────────────────────────────────────────
+  navBg: "#FFFFFF",
+  navText: "#1C1917",
+  navLinkColor: "#1C1917",
+  navLinkHover: "#4F46E5",
+
+  // ── Section backgrounds ───────────────────────────────────────
+  heroSectionBg: "",
+  heroSectionColor: "",
+  categorySectionBg: "",
+  categorySectionColor: "",
+  featuredSectionBg: "",
+  featuredSectionColor: "",
+  paymentSectionBg: "",
+  paymentSectionColor: "",
+  newsletterSectionBg: "",
+  newsletterSectionColor: "",
 };
 
 export const AVAILABLE_FONTS = [
@@ -79,6 +97,17 @@ const applyTheme = (theme) => {
   );
 };
 
+// Convert string values back to correct types after loading from DB
+const coerceSettings = (raw) => {
+  const s = { ...raw };
+  if (s.storefrontBgOverlay !== undefined)
+    s.storefrontBgOverlay = parseFloat(s.storefrontBgOverlay) || 0.35;
+  s.announcementEnabled =
+    s.announcementEnabled === "true" || s.announcementEnabled === true;
+  s.darkMode = s.darkMode === "true" || s.darkMode === true;
+  return s;
+};
+
 export const ThemeProvider = ({ children }) => {
   const [theme, setTheme] = useState(DEFAULT_THEME);
   const [loading, setLoading] = useState(true);
@@ -88,11 +117,14 @@ export const ThemeProvider = ({ children }) => {
       try {
         const data = await getAdminSettings();
         if (data.success && data.settings) {
-          const merged = { ...DEFAULT_THEME, ...data.settings };
-          if (merged.storefrontBgOverlay !== undefined)
-            merged.storefrontBgOverlay = parseFloat(merged.storefrontBgOverlay);
-          merged.announcementEnabled =
-            merged.announcementEnabled === "true" || merged.announcementEnabled === true;
+          // Only override keys that have a real non-empty value saved
+          const overrides = {};
+          Object.entries(data.settings).forEach(([k, v]) => {
+            if (v !== "" && v !== null && v !== undefined) {
+              overrides[k] = v;
+            }
+          });
+          const merged = coerceSettings({ ...DEFAULT_THEME, ...overrides });
           setTheme(merged);
           applyTheme(merged);
         } else {
