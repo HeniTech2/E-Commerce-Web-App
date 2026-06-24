@@ -1,15 +1,4 @@
 import prisma from "../prismaClient.js";
-import fs from "fs";
-import path from "path";
-
-// ── helpers ────────────────────────────────────────────────────────────────────
-const deleteFile = (url) => {
-  if (!url) return;
-  const filename = url.split("/uploads/")[1];
-  if (!filename) return;
-  const filePath = path.join(process.cwd(), "uploads", filename);
-  fs.unlink(filePath, () => {});
-};
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  NAV ITEMS
@@ -125,7 +114,7 @@ export const updateFooterSection = async (req, res) => {
 export const deleteFooterSection = async (req, res) => {
   try {
     const { id } = req.body;
-    await prisma.footerSection.delete({ where: { id } }); // cascades links
+    await prisma.footerSection.delete({ where: { id } });
     res.json({ success: true });
   } catch (e) {
     res.json({ success: false, message: e.message });
@@ -189,8 +178,8 @@ export const createSection = async (req, res) => {
   try {
     const { type, title, body, order, isVisible, bgColor, position } = req.body;
     let imageUrl, bgImageUrl;
-    if (req.files?.image?.[0]) imageUrl = `${process.env.BASE_URL}/uploads/${req.files.image[0].filename}`;
-    if (req.files?.bgImage?.[0]) bgImageUrl = `${process.env.BASE_URL}/uploads/${req.files.bgImage[0].filename}`;
+    if (req.files?.image?.[0]) imageUrl = req.files.image[0].path;
+    if (req.files?.bgImage?.[0]) bgImageUrl = req.files.bgImage[0].path;
     const section = await prisma.pageSection.create({
       data: {
         type: type || "text",
@@ -217,19 +206,15 @@ export const updateSection = async (req, res) => {
 
     let imageUrl;
     if (req.files?.image?.[0]) {
-      imageUrl = `${process.env.BASE_URL}/uploads/${req.files.image[0].filename}`;
-      if (existing?.imageUrl) deleteFile(existing.imageUrl);
+      imageUrl = req.files.image[0].path;
     } else if (removeImage === "true" || removeImage === true) {
-      if (existing?.imageUrl) deleteFile(existing.imageUrl);
       imageUrl = "";
     }
 
     let bgImageUrl;
     if (req.files?.bgImage?.[0]) {
-      bgImageUrl = `${process.env.BASE_URL}/uploads/${req.files.bgImage[0].filename}`;
-      if (existing?.bgImageUrl) deleteFile(existing.bgImageUrl);
+      bgImageUrl = req.files.bgImage[0].path;
     } else if (removeBgImage === "true" || removeBgImage === true) {
-      if (existing?.bgImageUrl) deleteFile(existing.bgImageUrl);
       bgImageUrl = "";
     }
 
@@ -256,9 +241,6 @@ export const updateSection = async (req, res) => {
 export const deleteSection = async (req, res) => {
   try {
     const { id } = req.body;
-    const existing = await prisma.pageSection.findUnique({ where: { id } });
-    if (existing?.imageUrl) deleteFile(existing.imageUrl);
-    if (existing?.bgImageUrl) deleteFile(existing.bgImageUrl);
     await prisma.pageSection.delete({ where: { id } });
     res.json({ success: true });
   } catch (e) {
@@ -278,7 +260,6 @@ export const reorderSections = async (req, res) => {
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  LOGO / BRAND SETTINGS
-//  Stored in SiteContent with key = "brand_settings"
 // ══════════════════════════════════════════════════════════════════════════════
 
 export const getBrand = async (req, res) => {
@@ -299,21 +280,16 @@ export const updateBrand = async (req, res) => {
     const { brandName, logoText, removeImage } = req.body;
     let logoUrl;
 
-    // Fetch existing record to handle old image deletion
     const existing = await prisma.siteContent.findUnique({ where: { key: "brand_settings" } });
     let currentBrand = { logoUrl: "", brandName: "Marqato", logoText: "MQ" };
     try { currentBrand = { ...currentBrand, ...JSON.parse(existing?.body || "{}") }; } catch (_) {}
     if (existing?.image) currentBrand.logoUrl = existing.image;
 
-    // Handle new logo upload
     if (req.file) {
-      if (currentBrand.logoUrl) deleteFile(currentBrand.logoUrl);
-      logoUrl = `${process.env.BASE_URL}/uploads/${req.file.filename}`;
+      logoUrl = req.file.path;
     }
 
-    // Handle remove image
     if (removeImage === "true" || removeImage === true) {
-      if (currentBrand.logoUrl) deleteFile(currentBrand.logoUrl);
       logoUrl = "";
     }
 
@@ -323,7 +299,7 @@ export const updateBrand = async (req, res) => {
       logoText: logoText !== undefined ? logoText : currentBrand.logoText,
     };
 
-    const record = await prisma.siteContent.upsert({
+    await prisma.siteContent.upsert({
       where: { key: "brand_settings" },
       update: {
         body: JSON.stringify(newBrand),
