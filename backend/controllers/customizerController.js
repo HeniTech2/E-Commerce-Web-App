@@ -177,9 +177,7 @@ export const listSections = async (req, res) => {
 export const createSection = async (req, res) => {
   try {
     const { type, title, body, order, isVisible, bgColor, position } = req.body;
-    // Accept Cloudinary URLs sent as JSON fields (preferred), or fall back to multer local uploads
-    let imageUrl = req.body.imageUrl || null;
-    let bgImageUrl = req.body.bgImageUrl || null;
+    let imageUrl, bgImageUrl;
     if (req.files?.image?.[0]) imageUrl = req.files.image[0].path;
     if (req.files?.bgImage?.[0]) bgImageUrl = req.files.bgImage[0].path;
     const section = await prisma.pageSection.create({
@@ -209,9 +207,6 @@ export const updateSection = async (req, res) => {
     let imageUrl;
     if (req.files?.image?.[0]) {
       imageUrl = req.files.image[0].path;
-    } else if (req.body.imageUrl !== undefined) {
-      // Cloudinary URL sent as JSON field
-      imageUrl = req.body.imageUrl;
     } else if (removeImage === "true" || removeImage === true) {
       imageUrl = "";
     }
@@ -219,9 +214,6 @@ export const updateSection = async (req, res) => {
     let bgImageUrl;
     if (req.files?.bgImage?.[0]) {
       bgImageUrl = req.files.bgImage[0].path;
-    } else if (req.body.bgImageUrl !== undefined) {
-      // Cloudinary URL sent as JSON field
-      bgImageUrl = req.body.bgImageUrl;
     } else if (removeBgImage === "true" || removeBgImage === true) {
       bgImageUrl = "";
     }
@@ -294,11 +286,7 @@ export const updateBrand = async (req, res) => {
     if (existing?.image) currentBrand.logoUrl = existing.image;
 
     if (req.file) {
-      // multer local upload (fallback)
       logoUrl = req.file.path;
-    } else if (req.body.logoUrl !== undefined) {
-      // Cloudinary URL sent as JSON field (preferred path)
-      logoUrl = req.body.logoUrl;
     }
 
     if (removeImage === "true" || removeImage === true) {

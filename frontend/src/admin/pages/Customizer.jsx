@@ -18,33 +18,9 @@ import {
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-// ── Cloudinary config ─────────────────────────────────────────────────────────
-// Set these two in your frontend .env:
-//   VITE_CLOUDINARY_CLOUD_NAME=your_cloud_name
-//   VITE_CLOUDINARY_UPLOAD_PRESET=your_unsigned_preset
-const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
-/**
- * Upload a File object directly to Cloudinary (unsigned).
- * Returns the secure_url string, or throws on failure.
- */
-const uploadToCloudinary = async (file) => {
-  const fd = new FormData();
-  fd.append("file", file);
-  fd.append("upload_preset", UPLOAD_PRESET);
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-    { method: "POST", body: fd }
-  );
-  if (!res.ok) throw new Error("Cloudinary upload failed");
-  const data = await res.json();
-  return data.secure_url;
-};
-
 const token = () => localStorage.getItem("marqato_token");
 
-// Generic JSON api helper
+// Generic JSON api helper (for non-file requests)
 const api = async (path, opts = {}) => {
   const { headers: optHeaders, ...rest } = opts;
   const res = await fetch(`${BASE_URL}/api/customizer${path}`, {
@@ -54,12 +30,12 @@ const api = async (path, opts = {}) => {
   return res.json();
 };
 
-// JSON api helper (replaces apiForm — no multipart to Railway)
-const apiJson = async (path, body) => {
+// FormData api helper (for file upload requests)
+const apiForm = async (path, formData) => {
   const res = await fetch(`${BASE_URL}/api/customizer${path}`, {
     method: "POST",
-    headers: { token: token(), "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: { token: token() },
+    body: formData,
   });
   return res.json();
 };
@@ -155,10 +131,9 @@ const LogoManager = () => {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [form, setForm] = useState({ brandName: "", logoText: "", logoUrl: "" });
-  const [previewFile, setPreviewFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewFile, setPreviewFile] = useState(null); // local File object for preview
+  const [previewUrl, setPreviewUrl] = useState(""); // local object URL
   const fileRef = useRef();
-  const submittingRef = useRef(false);
 
   const load = async () => {
     setLoading(true);
@@ -172,6 +147,7 @@ const LogoManager = () => {
 
   useEffect(() => { load(); }, []);
 
+  // Clean up object URL on unmount / change
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
@@ -192,41 +168,27 @@ const LogoManager = () => {
   };
 
   const save = async () => {
-    if (submittingRef.current) return;
-    submittingRef.current = true;
     setSaving(true);
-    try {
-      let logoUrl = form.logoUrl;
-
-      // Upload to Cloudinary if a new file was chosen
-      if (previewFile) {
-        logoUrl = await uploadToCloudinary(previewFile);
-      }
-
-      const body = {
-        brandName: form.brandName,
-        logoText: form.logoText,
-        logoUrl,
-        // Signal removal only if user cleared the existing logo and has no new file
-        ...(!previewFile && !form.logoUrl && brand.logoUrl ? { removeImage: true } : {}),
-      };
-
-      const d = await apiJson("/brand/update", body);
-      if (d.success) {
-        setBrand(d.brand);
-        setForm({ brandName: d.brand.brandName, logoText: d.brand.logoText, logoUrl: d.brand.logoUrl });
-        setPreviewFile(null);
-        if (previewUrl) URL.revokeObjectURL(previewUrl);
-        setPreviewUrl("");
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2500);
-      }
-    } catch (e) {
-      alert(e.message || "Save failed");
-    } finally {
-      setSaving(false);
-      submittingRef.current = false;
+    const fd = new FormData();
+    fd.append("brandName", form.brandName);
+    fd.append("logoText", form.logoText);
+    if (previewFile) {
+      fd.append("logo", previewFile);
+    } else if (!form.logoUrl && brand.logoUrl) {
+      // User removed the existing image
+      fd.append("removeImage", "true");
     }
+    const d = await apiForm("/brand/update", fd);
+    if (d.success) {
+      setBrand(d.brand);
+      setForm({ brandName: d.brand.brandName, logoText: d.brand.logoText, logoUrl: d.brand.logoUrl });
+      setPreviewFile(null);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    }
+    setSaving(false);
   };
 
   const currentLogoDisplay = previewUrl || form.logoUrl;
@@ -243,11 +205,16 @@ const LogoManager = () => {
       </div>
 
       <Card>
+        {/* Live preview */}
         <div className="mb-6 p-4 rounded-xl bg-slate-50 border border-slate-100">
           <p className="text-xs text-slate-400 mb-3 font-medium uppercase tracking-wide">Preview</p>
           <div className="flex items-center gap-2.5">
             {currentLogoDisplay ? (
-              <img src={currentLogoDisplay} alt="logo" className="w-9 h-9 rounded-xl object-cover border border-slate-200" />
+              <img
+                src={currentLogoDisplay}
+                alt="logo"
+                className="w-9 h-9 rounded-xl object-cover border border-slate-200"
+              />
             ) : (
               <span
                 className="w-9 h-9 rounded-xl text-white flex items-center justify-center font-bold text-xs shrink-0"
@@ -261,6 +228,7 @@ const LogoManager = () => {
         </div>
 
         <div className="space-y-5">
+          {/* Logo image upload */}
           <div>
             <label className="text-xs text-slate-500 mb-2 block font-medium">Logo image (replaces text badge)</label>
             {currentLogoDisplay ? (
@@ -285,18 +253,36 @@ const LogoManager = () => {
                 <span className="text-xs">PNG, JPG, SVG recommended</span>
               </div>
             )}
-            <input ref={fileRef} type="file" accept="image/*" className="sr-only" onChange={onFileChange} />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={onFileChange}
+            />
             <p className="text-xs text-slate-400">When no image is set, a coloured badge with the text below is shown instead.</p>
           </div>
 
+          {/* Logo text fallback */}
           <div>
             <label className="text-xs text-slate-500 mb-1 block font-medium">Badge text (fallback, 2–4 chars)</label>
-            <Input value={form.logoText} onChange={(v) => setForm((p) => ({ ...p, logoText: v }))} placeholder="MQ" className="max-w-xs" />
+            <Input
+              value={form.logoText}
+              onChange={(v) => setForm((p) => ({ ...p, logoText: v }))}
+              placeholder="MQ"
+              className="max-w-xs"
+            />
           </div>
 
+          {/* Brand name */}
           <div>
             <label className="text-xs text-slate-500 mb-1 block font-medium">Brand name</label>
-            <Input value={form.brandName} onChange={(v) => setForm((p) => ({ ...p, brandName: v }))} placeholder="Marqato" className="max-w-xs" />
+            <Input
+              value={form.brandName}
+              onChange={(v) => setForm((p) => ({ ...p, brandName: v }))}
+              placeholder="Marqato"
+              className="max-w-xs"
+            />
           </div>
 
           <div className="flex gap-2 pt-2">
@@ -480,11 +466,11 @@ const FooterManager = () => {
   const [loading, setLoading] = useState(true);
   const [addingSection, setAddingSection] = useState(false);
   const [newSection, setNewSection] = useState("");
-  const [editSection, setEditSection] = useState(null);
+  const [editSection, setEditSection] = useState(null); // id being edited
   const [editSectionTitle, setEditSectionTitle] = useState("");
-  const [addingLink, setAddingLink] = useState(null);
+  const [addingLink, setAddingLink] = useState(null); // sectionId
   const [newLink, setNewLink] = useState({ label: "", href: "" });
-  const [editLink, setEditLink] = useState(null);
+  const [editLink, setEditLink] = useState(null); // link id
   const [editLinkData, setEditLinkData] = useState({});
 
   const load = async () => {
@@ -496,6 +482,7 @@ const FooterManager = () => {
 
   useEffect(() => { load(); }, []);
 
+  // ── Sections ──────────────────────────────────────────────────────────────
   const createSection = async () => {
     if (!newSection.trim()) return;
     const d = await api("/footer/section/create", {
@@ -507,7 +494,10 @@ const FooterManager = () => {
     else alert(d.message || "Create failed");
   };
 
-  const startEditSection = (section) => { setEditSection(section.id); setEditSectionTitle(section.title); };
+  const startEditSection = (section) => {
+    setEditSection(section.id);
+    setEditSectionTitle(section.title);
+  };
 
   const saveSection = async (id) => {
     const d = await api("/footer/section/update", {
@@ -532,6 +522,7 @@ const FooterManager = () => {
     else alert(d.message || "Delete failed");
   };
 
+  // ── Links ─────────────────────────────────────────────────────────────────
   const createLink = async (sectionId) => {
     if (!newLink.label || !newLink.href) return alert("Label and link are required");
     const section = sections.find((s) => s.id === sectionId);
@@ -547,7 +538,10 @@ const FooterManager = () => {
     } else alert(d.message || "Create failed");
   };
 
-  const startEditLink = (link) => { setEditLink(link.id); setEditLinkData({ label: link.label, href: link.href }); };
+  const startEditLink = (link) => {
+    setEditLink(link.id);
+    setEditLinkData({ label: link.label, href: link.href });
+  };
 
   const saveLink = async () => {
     const d = await api("/footer/link/update", {
@@ -605,6 +599,7 @@ const FooterManager = () => {
       <div className="grid md:grid-cols-2 gap-4">
         {sections.map((section) => (
           <Card key={section.id}>
+            {/* Section header */}
             <div className="flex items-center gap-2 mb-3">
               {editSection === section.id ? (
                 <>
@@ -626,6 +621,7 @@ const FooterManager = () => {
               )}
             </div>
 
+            {/* Links */}
             <div className="space-y-1 mb-3">
               {(section.links || []).length === 0 && (
                 <p className="text-xs text-slate-400 italic px-2">No links yet</p>
@@ -666,6 +662,7 @@ const FooterManager = () => {
               ))}
             </div>
 
+            {/* Add link */}
             {addingLink === section.id ? (
               <div className="border border-dashed border-slate-200 rounded-xl p-3 space-y-2">
                 <div className="grid grid-cols-2 gap-2">
@@ -719,6 +716,7 @@ const PageSectionsManager = () => {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
 
+  // Image state: existing URL (string) + new file (File object) + preview URL
   const [existingImageUrl, setExistingImageUrl] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
@@ -730,7 +728,6 @@ const PageSectionsManager = () => {
 
   const [saving, setSaving] = useState(false);
   const fileRef = useRef();
-  const submittingRef = useRef(false);
 
   const load = async () => {
     setLoading(true);
@@ -741,10 +738,12 @@ const PageSectionsManager = () => {
 
   useEffect(() => { load(); }, []);
 
+  // Clean up object URL
   useEffect(() => {
     return () => { if (imagePreview) URL.revokeObjectURL(imagePreview); };
   }, [imagePreview]);
 
+  // Clean up bg object URL
   useEffect(() => {
     return () => { if (bgImagePreview) URL.revokeObjectURL(bgImagePreview); };
   }, [bgImagePreview]);
@@ -793,66 +792,46 @@ const PageSectionsManager = () => {
     setExistingImageUrl("");
   };
 
+  // The image currently shown (new preview or saved URL)
   const currentImage = imagePreview || existingImageUrl;
 
   const save = async () => {
-    // Prevent double-submit
-    if (submittingRef.current) return;
-    submittingRef.current = true;
     setSaving(true);
+    const endpoint = editId ? "/sections/update" : "/sections/create";
+    const fd = new FormData();
+    fd.append("type", form.type);
+    fd.append("title", form.title || "");
+    fd.append("body", form.body || "");
+    fd.append("isVisible", String(form.isVisible));
+    fd.append("position", form.position || "center");
+    fd.append("bgColor", form.bgColor || "");
+    fd.append("order", editId ? (sections.find((s) => s.id === editId)?.order ?? 0) : sections.length);
 
-    try {
-      const endpoint = editId ? "/sections/update" : "/sections/create";
+    if (editId) fd.append("id", editId);
 
-      // Upload images to Cloudinary first (bypasses Railway HTTP/2 multipart bug)
-      let imageUrl = existingImageUrl;
-      let bgImageUrl = existingBgImageUrl;
-
-      if (imageFile) {
-        imageUrl = await uploadToCloudinary(imageFile);
-      } else if (editId && !existingImageUrl) {
-        imageUrl = ""; // signal removal
-      }
-
-      if (bgImageFile) {
-        bgImageUrl = await uploadToCloudinary(bgImageFile);
-      } else if (editId && !existingBgImageUrl) {
-        bgImageUrl = ""; // signal removal
-      }
-
-      // Send plain JSON — no multipart needed
-      const body = {
-        type: form.type,
-        title: form.title || "",
-        body: form.body || "",
-        isVisible: form.isVisible,
-        position: form.position || "center",
-        bgColor: form.bgColor || "",
-        order: editId
-          ? (sections.find((s) => s.id === editId)?.order ?? 0)
-          : sections.length,
-        ...(editId && { id: editId }),
-        ...(imageUrl !== existingImageUrl || !editId ? { imageUrl } : {}),
-        ...(bgImageUrl !== existingBgImageUrl || !editId ? { bgImageUrl } : {}),
-        // removal flags for backend
-        ...(!imageFile && editId && !existingImageUrl ? { removeImage: true } : {}),
-        ...(!bgImageFile && editId && !existingBgImageUrl ? { removeBgImage: true } : {}),
-      };
-
-      const d = await apiJson(endpoint, body);
-      if (d.success) {
-        if (editId) setSections((p) => p.map((s) => (s.id === editId ? d.section : s)));
-        else setSections((p) => [...p, d.section]);
-        resetForm();
-      } else {
-        alert(d.message || "Save failed");
-      }
-    } catch (e) {
-      alert(e.message || "Upload failed. Check your Cloudinary config.");
-    } finally {
-      setSaving(false);
-      submittingRef.current = false;
+    // Attach new image file if chosen
+    if (imageFile) {
+      fd.append("image", imageFile);
+    } else if (editId && !existingImageUrl) {
+      fd.append("removeImage", "true");
     }
+
+    // Attach new background image file if chosen
+    if (bgImageFile) {
+      fd.append("bgImage", bgImageFile);
+    } else if (editId && !existingBgImageUrl) {
+      fd.append("removeBgImage", "true");
+    }
+
+    const d = await apiForm(endpoint, fd);
+    if (d.success) {
+      if (editId) setSections((p) => p.map((s) => (s.id === editId ? d.section : s)));
+      else setSections((p) => [...p, d.section]);
+      resetForm();
+    } else {
+      alert(d.message || "Save failed");
+    }
+    setSaving(false);
   };
 
   const remove = async (id) => {
@@ -867,10 +846,10 @@ const PageSectionsManager = () => {
   };
 
   const toggleVisible = async (section) => {
-    const d = await apiJson("/sections/update", {
-      id: section.id,
-      isVisible: !section.isVisible,
-    });
+    const fd = new FormData();
+    fd.append("id", section.id);
+    fd.append("isVisible", String(!section.isVisible));
+    const d = await apiForm("/sections/update", fd);
     if (d.success) setSections((p) => p.map((s) => (s.id === section.id ? d.section : s)));
   };
 
@@ -926,6 +905,7 @@ const PageSectionsManager = () => {
         <Card>
           <p className="text-sm font-semibold mb-4">{editId ? "Edit section" : "New section"}</p>
           <div className="space-y-4">
+            {/* Type selector */}
             <div>
               <label className="text-xs text-slate-500 mb-1.5 block">Section type</label>
               <div className="flex gap-2">
@@ -946,11 +926,13 @@ const PageSectionsManager = () => {
               </div>
             </div>
 
+            {/* Title */}
             <div>
               <label className="text-xs text-slate-500 mb-1 block">Title</label>
               <Input value={form.title} onChange={(v) => setForm((p) => ({ ...p, title: v }))} placeholder="Section title" />
             </div>
 
+            {/* Body text */}
             {(form.type === "text" || form.type === "text_image") && (
               <div>
                 <label className="text-xs text-slate-500 mb-1 block">Body text</label>
@@ -958,6 +940,7 @@ const PageSectionsManager = () => {
               </div>
             )}
 
+            {/* Image upload */}
             {(form.type === "image" || form.type === "text_image") && (
               <div>
                 <label className="text-xs text-slate-500 mb-1.5 block">Image</label>
@@ -983,10 +966,17 @@ const PageSectionsManager = () => {
                 <Btn onClick={() => fileRef.current?.click()}>
                   <HiOutlineUpload size={14} /> {currentImage ? "Change image" : "Upload image"}
                 </Btn>
-                <input ref={fileRef} type="file" accept="image/*" className="sr-only" onChange={onImageChange} />
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={onImageChange}
+                />
               </div>
             )}
 
+            {/* Position */}
             <div>
               <label className="text-xs text-slate-500 mb-1.5 block">Layout position</label>
               <div className="flex gap-2">
@@ -1007,6 +997,7 @@ const PageSectionsManager = () => {
               </div>
             </div>
 
+            {/* Background color */}
             <div>
               <label className="text-xs text-slate-500 mb-1.5 block">Section background color</label>
               <div className="flex items-center gap-3">
@@ -1031,6 +1022,7 @@ const PageSectionsManager = () => {
               </div>
             </div>
 
+            {/* Background image */}
             <div>
               <label className="text-xs text-slate-500 mb-1.5 block">Section background image</label>
               <p className="text-xs text-slate-400 mb-2">Overrides background color if set</p>
@@ -1056,9 +1048,16 @@ const PageSectionsManager = () => {
               <Btn onClick={() => bgFileRef.current?.click()}>
                 <HiOutlineUpload size={14} /> {(bgImagePreview || existingBgImageUrl) ? "Change background" : "Upload background"}
               </Btn>
-              <input ref={bgFileRef} type="file" accept="image/*" className="sr-only" onChange={onBgImageChange} />
+              <input
+                ref={bgFileRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={onBgImageChange}
+              />
             </div>
 
+            {/* Visibility toggle */}
             <div className="flex items-center gap-3">
               <Toggle value={form.isVisible} onChange={(v) => setForm((p) => ({ ...p, isVisible: v }))} />
               <span className="text-sm text-slate-600">Visible on storefront</span>
@@ -1082,11 +1081,13 @@ const PageSectionsManager = () => {
         {sections.map((section, idx) => (
           <Card key={section.id} className="!p-4 !mb-2">
             <div className="flex items-start gap-3">
+              {/* Reorder */}
               <div className="flex flex-col gap-0.5 pt-1">
                 <button onClick={() => move(idx, -1)} disabled={idx === 0} className="p-0.5 hover:text-indigo-500 disabled:opacity-20 transition-colors"><HiOutlineChevronUp size={14} /></button>
                 <button onClick={() => move(idx, 1)} disabled={idx === sections.length - 1} className="p-0.5 hover:text-indigo-500 disabled:opacity-20 transition-colors"><HiOutlineChevronDown size={14} /></button>
               </div>
 
+              {/* Thumbnail */}
               {section.imageUrl ? (
                 <img src={section.imageUrl} alt={section.title} className="w-14 h-14 rounded-xl object-cover shrink-0 border border-slate-100" />
               ) : (
@@ -1095,6 +1096,7 @@ const PageSectionsManager = () => {
                 </div>
               )}
 
+              {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <Badge color="slate">{SectionTypeLabel[section.type] || section.type}</Badge>
@@ -1112,6 +1114,7 @@ const PageSectionsManager = () => {
                 {section.body && <p className="text-xs text-slate-400 line-clamp-2 mt-0.5">{section.body}</p>}
               </div>
 
+              {/* Actions */}
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   onClick={() => toggleVisible(section)}
@@ -1136,10 +1139,10 @@ const PageSectionsManager = () => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 const TABS = [
-  { id: "logo",     label: "Logo & Brand",  icon: HiOutlineColorSwatch },
-  { id: "nav",      label: "Navigation",    icon: HiOutlineMenu },
-  { id: "footer",   label: "Footer",        icon: HiOutlineViewGrid },
-  { id: "sections", label: "Page Sections", icon: HiOutlineViewGrid },
+  { id: "logo",     label: "Logo & Brand",   icon: HiOutlineColorSwatch },
+  { id: "nav",      label: "Navigation",     icon: HiOutlineMenu },
+  { id: "footer",   label: "Footer",         icon: HiOutlineViewGrid },
+  { id: "sections", label: "Page Sections",  icon: HiOutlineViewGrid },
 ];
 
 const Customizer = () => {
@@ -1147,11 +1150,13 @@ const Customizer = () => {
 
   return (
     <div className="min-h-screen p-8" style={{ background: "var(--admin-dash-bg)" }}>
+      {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold font-display">Storefront Customizer</h1>
         <p className="text-sm text-slate-500 mt-1">Manage logo, navigation, footer sections, and custom page content.</p>
       </div>
 
+      {/* Tab bar */}
       <div className="flex gap-1 mb-8 bg-slate-100 p-1 rounded-xl w-fit flex-wrap">
         {TABS.map(({ id, label }) => (
           <button
@@ -1165,6 +1170,7 @@ const Customizer = () => {
         ))}
       </div>
 
+      {/* Tab content */}
       {tab === "logo"     && <LogoManager />}
       {tab === "nav"      && <NavManager />}
       {tab === "footer"   && <FooterManager />}
