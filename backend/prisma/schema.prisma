@@ -24,6 +24,7 @@ model Product {
   description String
   price       Float
   image       String[]
+  video       String?
   category    String
   subCategory String
   sizes       String[]

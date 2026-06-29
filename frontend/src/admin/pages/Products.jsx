@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { ShopContext, currency } from "../../context/ShopContext";
 import { addProduct, updateProduct, removeProduct } from "../../api";
 import { HiOutlineTrash, HiOutlinePlus, HiOutlinePencil, HiStar, HiPhotograph } from "react-icons/hi";
+import { HiVideoCamera, HiXMark } from "react-icons/hi2";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -34,6 +35,9 @@ const AdminProducts = () => {
   const [form, setForm] = useState(emptyForm);
   const [images, setImages] = useState({ image1: null, image2: null, image3: null, image4: null });
   const [previews, setPreviews] = useState({ image1: null, image2: null, image3: null, image4: null });
+  const [video, setVideo] = useState(null);
+  const [videoPreview, setVideoPreview] = useState(null);
+  const [clearVideo, setClearVideo] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const inputClass = "w-full border border-border bg-paper2 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
@@ -42,6 +46,9 @@ const AdminProducts = () => {
     setForm(emptyForm);
     setImages({ image1: null, image2: null, image3: null, image4: null });
     setPreviews({ image1: null, image2: null, image3: null, image4: null });
+    setVideo(null);
+    setVideoPreview(null);
+    setClearVideo(false);
     setEditTarget(null);
     setMode("add");
   };
@@ -59,6 +66,9 @@ const AdminProducts = () => {
     });
     setImages({ image1: null, image2: null, image3: null, image4: null });
     setPreviews({ image1: null, image2: null, image3: null, image4: null });
+    setVideo(null);
+    setVideoPreview(null);
+    setClearVideo(false);
     setEditTarget(p);
     setMode("edit");
   };
@@ -67,6 +77,19 @@ const AdminProducts = () => {
     if (!file) return;
     setImages((prev) => ({ ...prev, [key]: file }));
     setPreviews((prev) => ({ ...prev, [key]: URL.createObjectURL(file) }));
+  };
+
+  const handleVideoChange = (file) => {
+    if (!file) return;
+    setVideo(file);
+    setVideoPreview(URL.createObjectURL(file));
+    setClearVideo(false);
+  };
+
+  const removeVideoSelection = () => {
+    setVideo(null);
+    setVideoPreview(null);
+    setClearVideo(true);
   };
 
   const save = async (e) => {
@@ -86,6 +109,8 @@ const AdminProducts = () => {
       if (images.image2) fd.append("image2", images.image2);
       if (images.image3) fd.append("image3", images.image3);
       if (images.image4) fd.append("image4", images.image4);
+      if (video) fd.append("video", video);
+      if (clearVideo) fd.append("clearVideo", "true");
 
       let data;
       if (mode === "edit") {
@@ -125,6 +150,8 @@ const AdminProducts = () => {
     ? (editTarget.image || []).slice(0, 4)
     : [];
 
+  const existingVideo = editTarget?.video || null;
+
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
@@ -155,7 +182,10 @@ const AdminProducts = () => {
                 <td className="py-3 px-4">
                   <div className="flex items-center gap-3">
                     <ProductImage src={p.image?.[0]} alt={p.name} className="w-10 h-12 object-cover rounded-lg" />
-                    <span className="font-display font-medium">{p.name}</span>
+                    <div>
+                      <span className="font-display font-medium">{p.name}</span>
+                      {p.video && <span className="ml-2 text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-semibold">VIDEO</span>}
+                    </div>
                   </div>
                 </td>
                 <td className="capitalize">{p.category}</td>
@@ -238,6 +268,54 @@ const AdminProducts = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Video */}
+              <div>
+                <p className="text-xs text-stone mb-1 flex items-center gap-1">
+                  <HiVideoCamera size={13} /> Product video (optional — mp4, mov, webm)
+                </p>
+
+                {/* Existing video in edit mode */}
+                {mode === "edit" && existingVideo && !clearVideo && !videoPreview && (
+                  <div className="relative rounded-xl overflow-hidden border border-border mb-2">
+                    <video src={existingVideo} className="w-full max-h-36 object-cover" muted />
+                    <div className="absolute top-2 right-2 flex gap-1 items-center">
+                      <span className="bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full font-semibold">Current video</span>
+                      <button type="button" onClick={removeVideoSelection} className="bg-danger text-white rounded-full p-1 hover:bg-red-700 transition-colors">
+                        <HiXMark size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* New video preview */}
+                {videoPreview && (
+                  <div className="relative rounded-xl overflow-hidden border border-primary mb-2">
+                    <video src={videoPreview} className="w-full max-h-36 object-cover" muted />
+                    <button type="button" onClick={removeVideoSelection} className="absolute top-2 right-2 bg-danger text-white rounded-full p-1 hover:bg-red-700 transition-colors">
+                      <HiXMark size={12} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Upload button — shown when no video selected yet */}
+                {!videoPreview && !(mode === "edit" && existingVideo && !clearVideo) && (
+                  <label className="flex items-center gap-2 border-2 border-dashed border-border rounded-xl px-4 py-3 cursor-pointer hover:border-primary/60 transition-colors text-sm text-stone">
+                    <HiVideoCamera size={18} className="text-stoneLight" />
+                    <span>Click to upload video</span>
+                    <input type="file" accept="video/*" className="hidden" onChange={(e) => handleVideoChange(e.target.files[0])} />
+                  </label>
+                )}
+
+                {/* Replace link — shown when existing video is visible */}
+                {mode === "edit" && existingVideo && !clearVideo && !videoPreview && (
+                  <label className="mt-1 flex items-center gap-1 text-xs text-primary cursor-pointer hover:underline">
+                    <HiVideoCamera size={13} /> Upload new video to replace
+                    <input type="file" accept="video/*" className="hidden" onChange={(e) => handleVideoChange(e.target.files[0])} />
+                  </label>
+                )}
+              </div>
+
             </div>
             <div className="flex gap-3 mt-5">
               <button type="button" onClick={() => setMode(null)} className="border border-border rounded-xl px-5 py-2.5 text-sm font-semibold hover:bg-surface transition-colors">Cancel</button>

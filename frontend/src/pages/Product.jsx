@@ -2,6 +2,7 @@ import { useContext, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { HiOutlineTruck, HiOutlineRefresh, HiCheck } from "react-icons/hi";
+import { HiPlayCircle } from "react-icons/hi2";
 import { ShopContext, currency, stockStatus } from "../context/ShopContext";
 import ProductCard from "../components/ProductCard";
 
@@ -10,6 +11,7 @@ const Product = () => {
   const { products, addToCart, productsLoading } = useContext(ShopContext);
   const product = products.find((p) => (p.id || p._id) === id);
   const [activeImg, setActiveImg] = useState(0);
+  const [showVideo, setShowVideo] = useState(false);
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
   const [selectedSize, setSelectedSize] = useState(null);
@@ -26,6 +28,7 @@ const Product = () => {
   const outOfStock = (product.stock ?? 99) <= 0;
   const pid = product.id || product._id;
   const related = products.filter((p) => p.category === product.category && (p.id || p._id) !== pid).slice(0, 4);
+  const hasVideo = !!product.video;
 
   const handleAdd = () => {
     if (product.sizes?.length > 0 && !selectedSize) {
@@ -50,21 +53,50 @@ const Product = () => {
       <div className="grid md:grid-cols-2 gap-12">
         <div>
           <div className="relative mb-3">
-            <img src={images[activeImg]} alt={product.name} className="w-full aspect-[4/5] object-cover rounded-2xl border border-border" />
-            {product.bestseller && (
+            {showVideo && hasVideo ? (
+              <video
+                src={product.video}
+                controls
+                autoPlay
+                className="w-full aspect-[4/5] object-cover rounded-2xl border border-border bg-black"
+              />
+            ) : (
+              <img src={images[activeImg]} alt={product.name} className="w-full aspect-[4/5] object-cover rounded-2xl border border-border" />
+            )}
+            {product.bestseller && !showVideo && (
               <span className="absolute top-4 left-4 bg-primary text-white text-xs font-semibold px-3 py-1.5 rounded-full">Bestseller</span>
             )}
-            <div className="price-tag absolute bottom-4 right-4 font-mono text-sm font-semibold px-5 py-2">
-              {currency} {product.price.toLocaleString()}
-            </div>
+            {!showVideo && (
+              <div className="price-tag absolute bottom-4 right-4 font-mono text-sm font-semibold px-5 py-2">
+                {currency} {product.price.toLocaleString()}
+              </div>
+            )}
+            {hasVideo && (
+              <button
+                onClick={() => setShowVideo((v) => !v)}
+                className="absolute top-4 right-4 flex items-center gap-1.5 bg-black/60 text-white text-xs font-semibold px-3 py-1.5 rounded-full hover:bg-black/80 transition-colors"
+              >
+                <HiPlayCircle size={15} />
+                {showVideo ? "View photos" : "Watch video"}
+              </button>
+            )}
           </div>
-          {images.length > 1 && (
+          {images.length > 1 && !showVideo && (
             <div className="flex gap-2">
               {images.map((img, i) => (
                 <button key={i} onClick={() => setActiveImg(i)} className={`w-16 h-20 rounded-lg overflow-hidden border-2 transition-colors ${activeImg === i ? "border-primary" : "border-border"}`}>
                   <img src={img} alt="" className="w-full h-full object-cover" />
                 </button>
               ))}
+              {hasVideo && (
+                <button
+                  onClick={() => setShowVideo(true)}
+                  className="w-16 h-20 rounded-lg overflow-hidden border-2 border-border bg-black flex items-center justify-center relative"
+                >
+                  <video src={product.video} className="w-full h-full object-cover opacity-60" muted />
+                  <HiPlayCircle className="absolute text-white" size={22} />
+                </button>
+              )}
             </div>
           )}
         </div>

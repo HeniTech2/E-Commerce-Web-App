@@ -27,6 +27,7 @@ const addProduct = async (req, res) => {
         const image2 = req.files?.image2?.[0];
         const image3 = req.files?.image3?.[0];
         const image4 = req.files?.image4?.[0];
+        const videoFile = req.files?.video?.[0];
 
 
         const images = [
@@ -41,6 +42,10 @@ const addProduct = async (req, res) => {
         const imagesUrl = images.map(
             (item) => item.path
         );
+
+        const videoUrl = videoFile
+            ? videoFile.path
+            : null;
 
 
         const product = await prisma.product.create({
@@ -61,6 +66,8 @@ const addProduct = async (req, res) => {
                 sizes: JSON.parse(sizes),
 
                 image: imagesUrl,
+
+                video: videoUrl,
 
                 stock:
                     stock !== undefined
@@ -94,7 +101,6 @@ const addProduct = async (req, res) => {
 
 
 
-
 const updateProduct = async (req, res) => {
 
     try {
@@ -108,7 +114,8 @@ const updateProduct = async (req, res) => {
             subCategory,
             sizes,
             bestseller,
-            stock
+            stock,
+            clearVideo
         } = req.body;
 
 
@@ -150,6 +157,10 @@ const updateProduct = async (req, res) => {
             data.stock = Number(stock);
 
 
+        if (clearVideo === "true")
+            data.video = null;
+
+
 
         if (
             req.files &&
@@ -183,6 +194,15 @@ const updateProduct = async (req, res) => {
             if (newImages.length > 0) {
 
                 data.image = newImages;
+
+            }
+
+            const videoFile =
+                req.files?.video?.[0];
+
+            if (videoFile) {
+
+                data.video = videoFile.path;
 
             }
 
@@ -239,8 +259,6 @@ const updateProduct = async (req, res) => {
 
 
 
-
-
 const listProducts = async (req, res) => {
 
     try {
@@ -284,8 +302,6 @@ const listProducts = async (req, res) => {
     }
 
 };
-
-
 
 
 
@@ -346,8 +362,6 @@ const removeProduct = async (req, res) => {
 
 
 
-
-
 const singleProduct = async (req, res) => {
 
     try {
@@ -403,8 +417,6 @@ const singleProduct = async (req, res) => {
     }
 
 };
-
-
 
 
 
@@ -494,7 +506,6 @@ const decrementStock = async (items) => {
     }
 
 };
-
 
 
 
