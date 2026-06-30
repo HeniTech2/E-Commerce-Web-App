@@ -178,13 +178,19 @@ export const createSection = async (req, res) => {
   try {
     const { type, title, body, order, isVisible, bgColor, position, imagePosition } = req.body;
 
-    let imageUrl, image2Url, image3Url, image4Url, bgImageUrl, videoUrl;
+    let imageUrl, image2Url, image3Url, image4Url, bgImageUrl;
     if (req.files?.image?.[0])    imageUrl   = req.files.image[0].path;
     if (req.files?.image2?.[0])   image2Url  = req.files.image2[0].path;
     if (req.files?.image3?.[0])   image3Url  = req.files.image3[0].path;
     if (req.files?.image4?.[0])   image4Url  = req.files.image4[0].path;
     if (req.files?.bgImage?.[0])  bgImageUrl = req.files.bgImage[0].path;
-    if (req.files?.video?.[0])    videoUrl   = req.files.video[0].path;
+
+    // Up to 6 videos — collected from fields video1..video6
+    const videoUrls = [];
+    for (let i = 1; i <= 6; i++) {
+      const f = req.files?.[`video${i}`]?.[0];
+      if (f) videoUrls.push(f.path);
+    }
 
     const section = await prisma.pageSection.create({
       data: {
@@ -196,12 +202,12 @@ export const createSection = async (req, res) => {
         position: position || "center",
         imagePosition: imagePosition || "center",
         bgColor: bgColor || null,
+        videoUrls,
         ...(imageUrl   && { imageUrl }),
         ...(image2Url  && { image2Url }),
         ...(image3Url  && { image3Url }),
         ...(image4Url  && { image4Url }),
         ...(bgImageUrl && { bgImageUrl }),
-        ...(videoUrl   && { videoUrl }),
       },
     });
     res.json({ success: true, section });
@@ -214,7 +220,8 @@ export const updateSection = async (req, res) => {
   try {
     const {
       id, type, title, body, order, isVisible, bgColor, position, imagePosition,
-      removeImage, removeImage2, removeImage3, removeImage4, removeBgImage, removeVideo,
+      removeImage, removeImage2, removeImage3, removeImage4, removeBgImage,
+      existingVideoUrls, // JSON-stringified array of video URLs the admin wants to KEEP
     } = req.body;
 
     await prisma.pageSection.findUnique({ where: { id } });
@@ -239,9 +246,18 @@ export const updateSection = async (req, res) => {
     if (req.files?.bgImage?.[0])     bgImageUrl = req.files.bgImage[0].path;
     else if (removeBgImage === "true") bgImageUrl = "";
 
-    let videoUrl;
-    if (req.files?.video?.[0])       videoUrl = req.files.video[0].path;
-    else if (removeVideo === "true")  videoUrl = "";
+    // Build the final videoUrls array:
+    // Start from the URLs the admin chose to keep (existingVideoUrls), then append any newly uploaded files.
+    let keptUrls = [];
+    if (existingVideoUrls !== undefined) {
+      try { keptUrls = JSON.parse(existingVideoUrls); } catch (_) { keptUrls = []; }
+    }
+    const newUrls = [];
+    for (let i = 1; i <= 6; i++) {
+      const f = req.files?.[`video${i}`]?.[0];
+      if (f) newUrls.push(f.path);
+    }
+    const finalVideoUrls = [...keptUrls, ...newUrls].slice(0, 6);
 
     const section = await prisma.pageSection.update({
       where: { id },
@@ -259,7 +275,7 @@ export const updateSection = async (req, res) => {
         ...(image3Url     !== undefined && { image3Url: image3Url || null }),
         ...(image4Url     !== undefined && { image4Url: image4Url || null }),
         ...(bgImageUrl    !== undefined && { bgImageUrl: bgImageUrl || null }),
-        ...(videoUrl      !== undefined && { videoUrl: videoUrl || null }),
+        ...(existingVideoUrls !== undefined && { videoUrls: finalVideoUrls }),
       },
     });
     res.json({ success: true, section });

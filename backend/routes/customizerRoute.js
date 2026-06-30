@@ -28,13 +28,19 @@ customizerRouter.post("/footer/link/update",       adminAuth, updateFooterLink);
 customizerRouter.post("/footer/link/delete",       adminAuth, deleteFooterLink);
 
 // ── Page sections (public read, admin write) ───────────────────────────────────
+// Up to 6 video slots (video1..video6) alongside the existing 4 image slots + bgImage
 const sectionUpload = upload.fields([
   { name: "image",   maxCount: 1 },
   { name: "image2",  maxCount: 1 },
   { name: "image3",  maxCount: 1 },
   { name: "image4",  maxCount: 1 },
   { name: "bgImage", maxCount: 1 },
-  { name: "video",   maxCount: 1 },
+  { name: "video1",  maxCount: 1 },
+  { name: "video2",  maxCount: 1 },
+  { name: "video3",  maxCount: 1 },
+  { name: "video4",  maxCount: 1 },
+  { name: "video5",  maxCount: 1 },
+  { name: "video6",  maxCount: 1 },
 ]);
 
 customizerRouter.get("/sections",                  listSections);

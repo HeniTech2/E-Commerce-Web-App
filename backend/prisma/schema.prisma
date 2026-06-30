@@ -94,7 +94,7 @@ model PageSection {
   image2Url     String?
   image3Url     String?
   image4Url     String?
-  videoUrl      String?
+  videoUrls     String[] @default([])
   bgColor       String?
   bgImageUrl    String?
   position      String   @default("center")
