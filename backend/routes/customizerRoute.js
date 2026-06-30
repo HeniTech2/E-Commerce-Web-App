@@ -28,9 +28,18 @@ customizerRouter.post("/footer/link/update",       adminAuth, updateFooterLink);
 customizerRouter.post("/footer/link/delete",       adminAuth, deleteFooterLink);
 
 // ── Page sections (public read, admin write) ───────────────────────────────────
+const sectionUpload = upload.fields([
+  { name: "image",   maxCount: 1 },
+  { name: "image2",  maxCount: 1 },
+  { name: "image3",  maxCount: 1 },
+  { name: "image4",  maxCount: 1 },
+  { name: "bgImage", maxCount: 1 },
+  { name: "video",   maxCount: 1 },
+]);
+
 customizerRouter.get("/sections",                  listSections);
-customizerRouter.post("/sections/create",          adminAuth, upload.fields([{ name: "image", maxCount: 1 }, { name: "image2", maxCount: 1 }, { name: "image3", maxCount: 1 }, { name: "image4", maxCount: 1 }, { name: "bgImage", maxCount: 1 }]), createSection);
-customizerRouter.post("/sections/update",          adminAuth, upload.fields([{ name: "image", maxCount: 1 }, { name: "image2", maxCount: 1 }, { name: "image3", maxCount: 1 }, { name: "image4", maxCount: 1 }, { name: "bgImage", maxCount: 1 }]), updateSection);
+customizerRouter.post("/sections/create",          adminAuth, sectionUpload, createSection);
+customizerRouter.post("/sections/update",          adminAuth, sectionUpload, updateSection);
 customizerRouter.post("/sections/delete",          adminAuth, deleteSection);
 customizerRouter.post("/sections/reorder",         adminAuth, reorderSections);
 

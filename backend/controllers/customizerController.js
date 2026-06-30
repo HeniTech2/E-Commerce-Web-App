@@ -177,12 +177,15 @@ export const listSections = async (req, res) => {
 export const createSection = async (req, res) => {
   try {
     const { type, title, body, order, isVisible, bgColor, position, imagePosition } = req.body;
-    let imageUrl, image2Url, image3Url, image4Url, bgImageUrl;
+
+    let imageUrl, image2Url, image3Url, image4Url, bgImageUrl, videoUrl;
     if (req.files?.image?.[0])    imageUrl   = req.files.image[0].path;
     if (req.files?.image2?.[0])   image2Url  = req.files.image2[0].path;
     if (req.files?.image3?.[0])   image3Url  = req.files.image3[0].path;
     if (req.files?.image4?.[0])   image4Url  = req.files.image4[0].path;
     if (req.files?.bgImage?.[0])  bgImageUrl = req.files.bgImage[0].path;
+    if (req.files?.video?.[0])    videoUrl   = req.files.video[0].path;
+
     const section = await prisma.pageSection.create({
       data: {
         type: type || "text",
@@ -198,6 +201,7 @@ export const createSection = async (req, res) => {
         ...(image3Url  && { image3Url }),
         ...(image4Url  && { image4Url }),
         ...(bgImageUrl && { bgImageUrl }),
+        ...(videoUrl   && { videoUrl }),
       },
     });
     res.json({ success: true, section });
@@ -208,46 +212,54 @@ export const createSection = async (req, res) => {
 
 export const updateSection = async (req, res) => {
   try {
-    const { id, type, title, body, order, isVisible, bgColor, position, imagePosition,
-            removeImage, removeImage2, removeImage3, removeImage4, removeBgImage } = req.body;
-    const existing = await prisma.pageSection.findUnique({ where: { id } });
+    const {
+      id, type, title, body, order, isVisible, bgColor, position, imagePosition,
+      removeImage, removeImage2, removeImage3, removeImage4, removeBgImage, removeVideo,
+    } = req.body;
+
+    await prisma.pageSection.findUnique({ where: { id } });
 
     let imageUrl;
-    if (req.files?.image?.[0])   imageUrl  = req.files.image[0].path;
+    if (req.files?.image?.[0])       imageUrl  = req.files.image[0].path;
     else if (removeImage  === "true") imageUrl  = "";
 
     let image2Url;
-    if (req.files?.image2?.[0])  image2Url = req.files.image2[0].path;
+    if (req.files?.image2?.[0])      image2Url = req.files.image2[0].path;
     else if (removeImage2 === "true") image2Url = "";
 
     let image3Url;
-    if (req.files?.image3?.[0])  image3Url = req.files.image3[0].path;
+    if (req.files?.image3?.[0])      image3Url = req.files.image3[0].path;
     else if (removeImage3 === "true") image3Url = "";
 
     let image4Url;
-    if (req.files?.image4?.[0])  image4Url = req.files.image4[0].path;
+    if (req.files?.image4?.[0])      image4Url = req.files.image4[0].path;
     else if (removeImage4 === "true") image4Url = "";
 
     let bgImageUrl;
-    if (req.files?.bgImage?.[0]) bgImageUrl = req.files.bgImage[0].path;
+    if (req.files?.bgImage?.[0])     bgImageUrl = req.files.bgImage[0].path;
     else if (removeBgImage === "true") bgImageUrl = "";
+
+    let videoUrl;
+    if (req.files?.video?.[0])       videoUrl = req.files.video[0].path;
+    else if (removeVideo === "true")  videoUrl = "";
 
     const section = await prisma.pageSection.update({
       where: { id },
       data: {
-        ...(type      !== undefined && { type }),
-        ...(title     !== undefined && { title }),
-        ...(body      !== undefined && { body }),
-        ...(order     !== undefined && { order: Number(order) }),
-        ...(isVisible !== undefined && { isVisible: isVisible === true || isVisible === "true" }),
+        ...(type          !== undefined && { type }),
+        ...(title         !== undefined && { title }),
+        ...(body          !== undefined && { body }),
+        ...(order         !== undefined && { order: Number(order) }),
+        ...(isVisible     !== undefined && { isVisible: isVisible === true || isVisible === "true" }),
         ...(position      !== undefined && { position }),
-        ...(imagePosition  !== undefined && { imagePosition }),
+        ...(imagePosition !== undefined && { imagePosition }),
         ...(bgColor       !== undefined && { bgColor: bgColor || null }),
-        ...(imageUrl  !== undefined && { imageUrl:  imageUrl  || null }),
-        ...(image2Url !== undefined && { image2Url: image2Url || null }),
-        ...(image3Url !== undefined && { image3Url: image3Url || null }),
-        ...(image4Url !== undefined && { image4Url: image4Url || null }),
-        ...(bgImageUrl !== undefined && { bgImageUrl: bgImageUrl || null }),
+        ...(imageUrl      !== undefined && { imageUrl:  imageUrl  || null }),
+        ...(image2Url     !== undefined && { image2Url: image2Url || null }),
+        ...(image3Url     !== undefined && { image3Url: image3Url || null }),
+        ...(image4Url     !== undefined && { image4Url: image4Url || null }),
+        ...(bgImageUrl    !== undefined && { bgImageUrl: bgImageUrl || null }),
+        ...(videoUrl      !== undefined && { videoUrl: videoUrl || null }),
       },
     });
     res.json({ success: true, section });
