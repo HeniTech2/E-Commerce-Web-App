@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
-import { HiPlayCircle, HiPause, HiVolumeUp, HiVolumeOff } from "react-icons/hi";
-import { HiXMark } from "react-icons/hi2";
+import { HiPlayCircle, HiPause, HiSpeakerWave, HiSpeakerXMark, HiXMark } from "react-icons/hi2";
 
 /**
  * ProductVideoSection
@@ -139,7 +138,7 @@ const ProductVideoSection = ({ videoUrl, productName }) => {
                 className="text-white hover:text-primary transition-colors"
                 aria-label={muted ? "Unmute" : "Mute"}
               >
-                {muted ? <HiVolumeOff size={20} /> : <HiVolumeUp size={20} />}
+                {muted ? <HiSpeakerXMark size={20} /> : <HiSpeakerWave size={20} />}
               </button>
               <span className="text-white/60 text-xs ml-auto">
                 {productName}
