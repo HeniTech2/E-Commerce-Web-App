@@ -65,18 +65,12 @@ const DynamicSections = () => {
           <section key={section.id} style={bgStyle}>
             <div className="max-w-7xl mx-auto px-5 md:px-8 py-16 flex flex-col gap-10">
 
-              {/* TEXT BLOCK — its own position */}
+              {/* TEXT BLOCK */}
               {(section.type === "text" || section.type === "text_image") && (
                 section.title || section.body
               ) && (
-                <div
-                  className="flex"
-                  style={{ justifyContent: justify[textPos] }}
-                >
-                  <div
-                    className="max-w-2xl"
-                    style={{ textAlign: textAlign[textPos] }}
-                  >
+                <div className="flex" style={{ justifyContent: justify[textPos] }}>
+                  <div className="max-w-2xl" style={{ textAlign: textAlign[textPos] }}>
                     {section.title && (
                       <h2 className="font-display text-2xl md:text-3xl font-bold mb-3">
                         {section.title}
@@ -91,18 +85,12 @@ const DynamicSections = () => {
                 </div>
               )}
 
-              {/* IMAGE GRID — its own position */}
+              {/* IMAGE GRID */}
               {(section.type === "image" || section.type === "text_image") && hasImages && (
-                <div
-                  className="flex flex-col"
-                  style={{ alignItems: justify[imgPos] }}
-                >
+                <div className="flex flex-col" style={{ alignItems: justify[imgPos] }}>
                   <div
                     className={`grid ${gridCols} gap-4`}
-                    style={{
-                      width: imgPos === "center" ? "100%" : "auto",
-                      maxWidth: "100%",
-                    }}
+                    style={{ width: imgPos === "center" ? "100%" : "auto", maxWidth: "100%" }}
                   >
                     {images.map((url, i) => (
                       <img
@@ -114,6 +102,29 @@ const DynamicSections = () => {
                       />
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* VIDEO BLOCK */}
+              {section.type === "video" && section.videoUrl && (
+                <div className="flex flex-col items-center gap-6">
+                  {section.title && (
+                    <h2 className="font-display text-2xl md:text-3xl font-bold text-center">
+                      {section.title}
+                    </h2>
+                  )}
+                  {section.body && (
+                    <p className="text-base text-stoneLight text-center max-w-2xl whitespace-pre-line">
+                      {section.body}
+                    </p>
+                  )}
+                  <video
+                    src={section.videoUrl}
+                    controls
+                    playsInline
+                    className="w-full max-w-3xl rounded-2xl border border-border shadow-card"
+                    style={{ maxHeight: "560px" }}
+                  />
                 </div>
               )}
 
