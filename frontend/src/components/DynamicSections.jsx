@@ -61,6 +61,19 @@ const DynamicSections = () => {
 
         const imgMaxH = images.length === 1 ? "480px" : "300px";
 
+        // ── Video grid setup ──
+        const videos = Array.isArray(section.videoUrls) ? section.videoUrls.filter(Boolean) : [];
+        const hasVideos = videos.length > 0;
+
+        // Responsive column count based on how many videos are present (max 6)
+        const videoGridCols =
+          videos.length === 1 ? "grid-cols-1"
+          : videos.length === 2 ? "grid-cols-1 sm:grid-cols-2"
+          : videos.length <= 4 ? "grid-cols-2"
+          : "grid-cols-2 md:grid-cols-3";
+
+        const videoMaxH = videos.length === 1 ? "480px" : "320px";
+
         return (
           <section key={section.id} style={bgStyle}>
             <div className="max-w-7xl mx-auto px-5 md:px-8 py-16 flex flex-col gap-10">
@@ -105,8 +118,8 @@ const DynamicSections = () => {
                 </div>
               )}
 
-              {/* VIDEO BLOCK */}
-              {section.type === "video" && section.videoUrl && (
+              {/* VIDEO GRID — up to 6 videos */}
+              {section.type === "video" && hasVideos && (
                 <div className="flex flex-col items-center gap-6">
                   {section.title && (
                     <h2 className="font-display text-2xl md:text-3xl font-bold text-center">
@@ -118,13 +131,18 @@ const DynamicSections = () => {
                       {section.body}
                     </p>
                   )}
-                  <video
-                    src={section.videoUrl}
-                    controls
-                    playsInline
-                    className="w-full max-w-3xl rounded-2xl border border-border shadow-card"
-                    style={{ maxHeight: "560px" }}
-                  />
+                  <div className={`grid ${videoGridCols} gap-4 w-full max-w-5xl`}>
+                    {videos.map((url, i) => (
+                      <video
+                        key={i}
+                        src={url}
+                        controls
+                        playsInline
+                        className="w-full rounded-2xl border border-border shadow-card object-cover"
+                        style={{ maxHeight: videoMaxH }}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
 

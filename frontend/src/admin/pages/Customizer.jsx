@@ -15,7 +15,7 @@ import {
   HiOutlineChevronDown,
   HiOutlineColorSwatch,
 } from "react-icons/hi";
-import { HiVideoCamera, HiXMark } from "react-icons/hi2";
+import { HiVideoCamera } from "react-icons/hi2";
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -524,6 +524,7 @@ const PositionLabel = { left: "Left", center: "Center", right: "Right" };
 
 const EMPTY_FORM = { type: "text", title: "", body: "", isVisible: true, position: "center", imagePosition: "center", bgColor: "" };
 const EMPTY_IMAGES = { img1: null, img2: null, img3: null, img4: null, prev1: "", prev2: "", prev3: "", prev4: "", url1: "", url2: "", url3: "", url4: "" };
+const MAX_VIDEOS = 6;
 
 const PageSectionsManager = () => {
   const [sections, setSections] = useState([]);
@@ -543,14 +544,16 @@ const PageSectionsManager = () => {
   const fileRef3 = useRef();
   const fileRef4 = useRef();
 
-  // Video state
-  const [videoFile, setVideoFile] = useState(null);
-  const [videoPreview, setVideoPreview] = useState("");
-  const [existingVideoUrl, setExistingVideoUrl] = useState("");
-  const [clearVideo, setClearVideo] = useState(false);
+  // Video state — up to 6 videos.
+  // existingVideoUrls: URLs already saved on the server that the admin wants to KEEP.
+  // newVideoFiles: newly selected File objects (not yet uploaded) with local preview URLs.
+  const [existingVideoUrls, setExistingVideoUrls] = useState([]); // string[]
+  const [newVideoFiles, setNewVideoFiles] = useState([]); // { file, preview }[]
   const videoFileRef = useRef();
 
   const [saving, setSaving] = useState(false);
+
+  const totalVideoCount = existingVideoUrls.length + newVideoFiles.length;
 
   const load = async () => {
     setLoading(true);
@@ -561,7 +564,9 @@ const PageSectionsManager = () => {
 
   useEffect(() => { load(); }, []);
   useEffect(() => { return () => { if (bgImagePreview) URL.revokeObjectURL(bgImagePreview); }; }, [bgImagePreview]);
-  useEffect(() => { return () => { if (videoPreview) URL.revokeObjectURL(videoPreview); }; }, [videoPreview]);
+  useEffect(() => {
+    return () => { newVideoFiles.forEach((v) => URL.revokeObjectURL(v.preview)); };
+  }, [newVideoFiles]);
 
   const resetForm = () => {
     setForm({ ...EMPTY_FORM });
@@ -572,11 +577,9 @@ const PageSectionsManager = () => {
     setBgImageFile(null);
     if (bgImagePreview) URL.revokeObjectURL(bgImagePreview);
     setBgImagePreview("");
-    setVideoFile(null);
-    if (videoPreview) URL.revokeObjectURL(videoPreview);
-    setVideoPreview("");
-    setExistingVideoUrl("");
-    setClearVideo(false);
+    newVideoFiles.forEach((v) => URL.revokeObjectURL(v.preview));
+    setNewVideoFiles([]);
+    setExistingVideoUrls([]);
   };
 
   const onImageChange = (slot, e) => {
@@ -608,21 +611,35 @@ const PageSectionsManager = () => {
     setExistingBgImageUrl("");
   };
 
-  const onVideoChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (videoPreview) URL.revokeObjectURL(videoPreview);
-    setVideoFile(file);
-    setVideoPreview(URL.createObjectURL(file));
-    setClearVideo(false);
+  // ── Video handlers (up to 6 total, existing + new combined) ──────────────────
+  const onVideoFilesSelected = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    const room = MAX_VIDEOS - totalVideoCount;
+    if (room <= 0) {
+      alert(`You can upload a maximum of ${MAX_VIDEOS} videos per section.`);
+      e.target.value = "";
+      return;
+    }
+    const toAdd = files.slice(0, room).map((file) => ({ file, preview: URL.createObjectURL(file) }));
+    if (files.length > room) {
+      alert(`Only ${room} more video(s) could be added (max ${MAX_VIDEOS} total). The rest were skipped.`);
+    }
+    setNewVideoFiles((prev) => [...prev, ...toAdd]);
+    e.target.value = "";
   };
 
-  const removeVideo = () => {
-    if (videoPreview) URL.revokeObjectURL(videoPreview);
-    setVideoFile(null);
-    setVideoPreview("");
-    setExistingVideoUrl("");
-    setClearVideo(true);
+  const removeExistingVideo = (url) => {
+    setExistingVideoUrls((prev) => prev.filter((u) => u !== url));
+  };
+
+  const removeNewVideo = (index) => {
+    setNewVideoFiles((prev) => {
+      const copy = [...prev];
+      URL.revokeObjectURL(copy[index].preview);
+      copy.splice(index, 1);
+      return copy;
+    });
   };
 
   const save = async () => {
@@ -653,12 +670,11 @@ const PageSectionsManager = () => {
     if (bgImageFile) { fd.append("bgImage", bgImageFile); }
     else if (editId && !existingBgImageUrl) { fd.append("removeBgImage", "true"); }
 
-    // Video
-    if (videoFile) {
-      fd.append("video", videoFile);
-    } else if (editId && clearVideo) {
-      fd.append("removeVideo", "true");
-    }
+    // Videos — tell the backend which existing URLs to keep, then attach new files as video1..video6
+    fd.append("existingVideoUrls", JSON.stringify(existingVideoUrls));
+    newVideoFiles.forEach((v, i) => {
+      fd.append(`video${i + 1}`, v.file);
+    });
 
     const d = await apiForm(endpoint, fd);
     if (d.success) {
@@ -701,11 +717,9 @@ const PageSectionsManager = () => {
     setBgImageFile(null);
     if (bgImagePreview) URL.revokeObjectURL(bgImagePreview);
     setBgImagePreview("");
-    setExistingVideoUrl(section.videoUrl || "");
-    setVideoFile(null);
-    if (videoPreview) URL.revokeObjectURL(videoPreview);
-    setVideoPreview("");
-    setClearVideo(false);
+    newVideoFiles.forEach((v) => URL.revokeObjectURL(v.preview));
+    setNewVideoFiles([]);
+    setExistingVideoUrls(Array.isArray(section.videoUrls) ? section.videoUrls : []);
     setAdding(true);
   };
 
@@ -793,57 +807,60 @@ const PageSectionsManager = () => {
               </div>
             )}
 
-            {/* ── VIDEO UPLOAD (new) ── */}
+            {/* ── VIDEO UPLOAD — up to 6 videos, grid layout ── */}
             {showVideo && (
               <div>
                 <label className="text-xs text-slate-500 mb-2 block font-medium flex items-center gap-1">
-                  <HiVideoCamera size={13} /> Video file <span className="text-slate-300 font-normal">(mp4, mov, webm)</span>
+                  <HiVideoCamera size={13} /> Videos
+                  <span className="text-slate-300 font-normal">
+                    (up to {MAX_VIDEOS} — displayed as a grid · {totalVideoCount}/{MAX_VIDEOS} added)
+                  </span>
                 </label>
 
-                {/* Existing video in edit mode */}
-                {editId && existingVideoUrl && !clearVideo && !videoPreview && (
-                  <div className="relative rounded-xl overflow-hidden border border-slate-200 mb-2">
-                    <video src={existingVideoUrl} className="w-full max-h-40 object-cover" muted playsInline preload="metadata" />
-                    <div className="absolute top-2 right-2 flex gap-1 items-center">
-                      <span className="bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full font-semibold">Current video</span>
-                      <button type="button" onClick={removeVideo} className="bg-red-500 text-white rounded-full p-1 hover:bg-red-700 transition-colors"><HiXMark size={12} /></button>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  {/* Existing videos already saved on the server */}
+                  {existingVideoUrls.map((url) => (
+                    <div key={url} className="relative h-28 rounded-xl overflow-hidden border border-slate-100">
+                      <video src={url} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                      <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded-full font-semibold">Saved</span>
+                      <button onClick={() => removeExistingVideo(url)} className="absolute top-1.5 right-1.5 bg-white/90 hover:bg-white rounded-lg p-1 text-red-500 shadow"><HiOutlineX size={13} /></button>
                     </div>
-                  </div>
-                )}
+                  ))}
 
-                {/* New video preview */}
-                {videoPreview && (
-                  <div className="relative rounded-xl overflow-hidden border border-indigo-300 mb-2">
-                    <video src={videoPreview} className="w-full max-h-40 object-cover" muted playsInline preload="metadata" />
-                    <div className="absolute top-2 right-2 flex gap-1 items-center">
-                      {videoFile && <span className="bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full font-semibold">{(videoFile.size / (1024 * 1024)).toFixed(1)} MB</span>}
-                      <button type="button" onClick={removeVideo} className="bg-red-500 text-white rounded-full p-1 hover:bg-red-700 transition-colors"><HiXMark size={12} /></button>
+                  {/* Newly selected videos (not yet uploaded) */}
+                  {newVideoFiles.map((v, i) => (
+                    <div key={v.preview} className="relative h-28 rounded-xl overflow-hidden border border-indigo-300">
+                      <video src={v.preview} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                      <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded-full font-semibold">
+                        {(v.file.size / (1024 * 1024)).toFixed(1)} MB
+                      </span>
+                      <button onClick={() => removeNewVideo(i)} className="absolute top-1.5 right-1.5 bg-white/90 hover:bg-white rounded-lg p-1 text-red-500 shadow"><HiOutlineX size={13} /></button>
                     </div>
-                  </div>
-                )}
+                  ))}
 
-                {/* Upload area — shown when no video */}
-                {!videoPreview && !(editId && existingVideoUrl && !clearVideo) && (
-                  <div
-                    className="border-2 border-dashed border-slate-200 rounded-xl h-28 flex flex-col items-center justify-center text-slate-400 text-sm cursor-pointer hover:border-indigo-300 hover:text-indigo-400 transition-colors gap-2"
-                    onClick={() => videoFileRef.current?.click()}
-                  >
-                    <HiVideoCamera size={24} />
-                    <span>Click to upload video</span>
-                    <span className="text-xs">mp4, mov, webm · max 100 MB</span>
-                  </div>
-                )}
+                  {/* Upload tile — shown while there's room left */}
+                  {totalVideoCount < MAX_VIDEOS && (
+                    <div
+                      className="border-2 border-dashed border-slate-200 rounded-xl h-28 flex flex-col items-center justify-center text-slate-400 text-xs cursor-pointer hover:border-indigo-300 hover:text-indigo-400 transition-colors gap-1"
+                      onClick={() => videoFileRef.current?.click()}
+                    >
+                      <HiVideoCamera size={20} />
+                      <span>Click to upload</span>
+                    </div>
+                  )}
+                </div>
 
-                {/* Replace link */}
-                {editId && existingVideoUrl && !clearVideo && !videoPreview && (
-                  <button type="button" onClick={() => videoFileRef.current?.click()} className="mt-2 flex items-center gap-1 text-xs text-indigo-500 hover:underline">
-                    <HiVideoCamera size={13} /> Upload new video to replace
-                  </button>
-                )}
+                <input
+                  ref={videoFileRef}
+                  type="file"
+                  accept="video/*"
+                  multiple
+                  className="sr-only"
+                  onChange={onVideoFilesSelected}
+                />
 
-                <input ref={videoFileRef} type="file" accept="video/*" className="sr-only" onChange={onVideoChange} />
-
-                {videoFile && (
+                <p className="text-[10px] text-slate-400">mp4, mov, webm · max 100 MB each</p>
+                {newVideoFiles.length > 0 && (
                   <p className="text-[10px] text-slate-400 mt-1">⏳ Large videos may take 15–60 seconds to upload. Please wait after clicking Save.</p>
                 )}
               </div>
@@ -913,7 +930,7 @@ const PageSectionsManager = () => {
 
             <div className="flex gap-2">
               <Btn variant="primary" onClick={save} disabled={saving}>
-                <HiOutlineCheck size={14} /> {saving ? (videoFile ? "Uploading video…" : "Saving…") : editId ? "Update" : "Create"}
+                <HiOutlineCheck size={14} /> {saving ? (newVideoFiles.length > 0 ? "Uploading videos…" : "Saving…") : editId ? "Update" : "Create"}
               </Btn>
               <Btn onClick={resetForm}><HiOutlineX size={14} /> Cancel</Btn>
             </div>
@@ -926,57 +943,62 @@ const PageSectionsManager = () => {
       )}
 
       <div className="space-y-3">
-        {sections.map((section, idx) => (
-          <Card key={section.id} className="!p-4 !mb-2">
-            <div className="flex items-start gap-3">
-              {/* Reorder */}
-              <div className="flex flex-col gap-0.5 pt-1">
-                <button onClick={() => move(idx, -1)} disabled={idx === 0} className="p-0.5 hover:text-indigo-500 disabled:opacity-20 transition-colors"><HiOutlineChevronUp size={14} /></button>
-                <button onClick={() => move(idx, 1)} disabled={idx === sections.length - 1} className="p-0.5 hover:text-indigo-500 disabled:opacity-20 transition-colors"><HiOutlineChevronDown size={14} /></button>
-              </div>
+        {sections.map((section, idx) => {
+          const sectionVideoCount = Array.isArray(section.videoUrls) ? section.videoUrls.length : 0;
+          return (
+            <Card key={section.id} className="!p-4 !mb-2">
+              <div className="flex items-start gap-3">
+                {/* Reorder */}
+                <div className="flex flex-col gap-0.5 pt-1">
+                  <button onClick={() => move(idx, -1)} disabled={idx === 0} className="p-0.5 hover:text-indigo-500 disabled:opacity-20 transition-colors"><HiOutlineChevronUp size={14} /></button>
+                  <button onClick={() => move(idx, 1)} disabled={idx === sections.length - 1} className="p-0.5 hover:text-indigo-500 disabled:opacity-20 transition-colors"><HiOutlineChevronDown size={14} /></button>
+                </div>
 
-              {/* Thumbnail */}
-              {section.videoUrl && section.type === "video" ? (
-                <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-slate-100 bg-black flex items-center justify-center relative">
-                  <video src={section.videoUrl} className="w-full h-full object-cover opacity-70" muted playsInline preload="metadata" />
-                  <HiVideoCamera className="absolute text-white" size={18} />
-                </div>
-              ) : (section.imageUrl || section.image2Url || section.image3Url || section.image4Url) ? (
-                <div className="grid grid-cols-2 gap-0.5 w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-slate-100">
-                  {[section.imageUrl, section.image2Url, section.image3Url, section.image4Url].filter(Boolean).slice(0, 4).map((url, i) => (
-                    <img key={i} src={url} alt="" className="w-full h-full object-cover" />
-                  ))}
-                </div>
-              ) : (
-                <div className="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center text-slate-300 shrink-0">
-                  <HiOutlinePhotograph size={20} />
-                </div>
-              )}
+                {/* Thumbnail */}
+                {section.type === "video" && sectionVideoCount > 0 ? (
+                  <div className="grid grid-cols-2 gap-0.5 w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-slate-100 bg-black relative">
+                    {section.videoUrls.slice(0, 4).map((url, i) => (
+                      <video key={i} src={url} className="w-full h-full object-cover opacity-70" muted playsInline preload="metadata" />
+                    ))}
+                    <HiVideoCamera className="absolute inset-0 m-auto text-white" size={16} />
+                  </div>
+                ) : (section.imageUrl || section.image2Url || section.image3Url || section.image4Url) ? (
+                  <div className="grid grid-cols-2 gap-0.5 w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-slate-100">
+                    {[section.imageUrl, section.image2Url, section.image3Url, section.image4Url].filter(Boolean).slice(0, 4).map((url, i) => (
+                      <img key={i} src={url} alt="" className="w-full h-full object-cover" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="w-14 h-14 rounded-xl bg-slate-100 flex items-center justify-center text-slate-300 shrink-0">
+                    <HiOutlinePhotograph size={20} />
+                  </div>
+                )}
 
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <Badge color="slate">{SectionTypeLabel[section.type] || section.type}</Badge>
-                  {section.type !== "video" && <Badge color="slate">{PositionLabel[section.position] || "Center"}</Badge>}
-                  <Badge color={section.isVisible ? "green" : "red"}>{section.isVisible ? "Visible" : "Hidden"}</Badge>
-                  {section.bgColor && <span className="w-4 h-4 rounded-full border border-slate-200" style={{ background: section.bgColor }} title={`Background: ${section.bgColor}`} />}
-                  {section.videoUrl && <Badge color="indigo">Has video</Badge>}
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <Badge color="slate">{SectionTypeLabel[section.type] || section.type}</Badge>
+                    {section.type !== "video" && <Badge color="slate">{PositionLabel[section.position] || "Center"}</Badge>}
+                    <Badge color={section.isVisible ? "green" : "red"}>{section.isVisible ? "Visible" : "Hidden"}</Badge>
+                    {section.bgColor && <span className="w-4 h-4 rounded-full border border-slate-200" style={{ background: section.bgColor }} title={`Background: ${section.bgColor}`} />}
+                    {sectionVideoCount > 0 && <Badge color="indigo">{sectionVideoCount} video{sectionVideoCount > 1 ? "s" : ""}</Badge>}
+                  </div>
+                  <p className="text-sm font-semibold truncate">{section.title || "(No title)"}</p>
+                  {section.body && <p className="text-xs text-slate-400 line-clamp-2 mt-0.5">{section.body}</p>}
                 </div>
-                <p className="text-sm font-semibold truncate">{section.title || "(No title)"}</p>
-                {section.body && <p className="text-xs text-slate-400 line-clamp-2 mt-0.5">{section.body}</p>}
-              </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-1 shrink-0">
-                <button onClick={() => toggleVisible(section)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400" title={section.isVisible ? "Hide" : "Show"}>
-                  {section.isVisible ? <HiOutlineEye size={16} /> : <HiOutlineEyeOff size={16} />}
-                </button>
-                <button onClick={() => startEdit(section)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400" title="Edit"><HiOutlinePencil size={16} /></button>
-                <button onClick={() => remove(section.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400" title="Delete"><HiOutlineTrash size={16} /></button>
+                {/* Actions */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => toggleVisible(section)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400" title={section.isVisible ? "Hide" : "Show"}>
+                    {section.isVisible ? <HiOutlineEye size={16} /> : <HiOutlineEyeOff size={16} />}
+                  </button>
+                  <button onClick={() => startEdit(section)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400" title="Edit"><HiOutlinePencil size={16} /></button>
+                  <button onClick={() => remove(section.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-400" title="Delete"><HiOutlineTrash size={16} /></button>
+                </div>
               </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
