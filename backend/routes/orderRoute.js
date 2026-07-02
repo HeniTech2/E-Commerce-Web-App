@@ -1,6 +1,8 @@
 import express from "express";
 import {
     placeOrder,
+    placeOrderCBE,
+    verifyCBEPayment,
     placeOrderChapa,
     verifyChapaPayment,
     allOrders,
@@ -10,16 +12,20 @@ import {
 } from "../controllers/orderController.js";
 import adminAuth from "../middleware/adminAuth.js";
 import authUser from "../middleware/auth.js";
+import upload from "../middleware/multer.js";
 
 const orderRouter = express.Router();
 
 // Admin
 orderRouter.post("/list", adminAuth, allOrders);
 orderRouter.post("/status", adminAuth, updateStatus);
+orderRouter.post("/cbe/verify", adminAuth, verifyCBEPayment);
 
 // User orders
 orderRouter.post("/place", authUser, placeOrder);
 orderRouter.post("/chapa", authUser, placeOrderChapa);
+// multer runs first so req.body is populated before authUser adds userId to it
+orderRouter.post("/cbe", upload.single("txProof"), authUser, placeOrderCBE);
 orderRouter.post("/userorders", authUser, userOrders);
 orderRouter.post("/single", authUser, singleOrder);
 
