@@ -58,7 +58,13 @@ export const sendOrderConfirmationEmail = async (toEmail, customerName, order) =
       </div>
 
       <div style="margin-top:24px;padding:16px;background:#f0fdf4;border-radius:12px;border:1px solid #bbf7d0;">
-        <p style="margin:0;color:#166534;font-size:13px;">Payment: <strong>${order.paymentMethod}</strong>${order.payment ? " ✓ Paid" : " — Pay on delivery"}</p>
+        <p style="margin:0;color:#166534;font-size:13px;">Payment: <strong>${order.paymentMethod}</strong>${
+            order.payment
+                ? " ✓ Paid"
+                : order.paymentMethod === "CBE Transfer"
+                ? " — Pending verification (usually within a few hours)"
+                : " — Pay on delivery"
+            }</p>
       </div>
 
       <p style="margin:24px 0 0;color:#94a3b8;font-size:12px;text-align:center;">
