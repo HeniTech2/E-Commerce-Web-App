@@ -30,8 +30,17 @@ export const stockStatus = (stock) => {
 
 export const paymentProviders = [
   { id: "chapa", name: "Chapa (Card/Bank)", color: "#1DBF73", note: "Pay securely online — cards, telebirr, CBE & more." },
+  { id: "cbe", name: "CBE Bank Transfer", color: "#4F46E5", note: "Transfer manually and upload your receipt — we confirm within a few hours." },
   { id: "cod", name: "Cash on Delivery", color: "#1a1a1a", note: "Pay when your order arrives." },
 ];
+
+// Shown to customers at checkout when they choose CBE Bank Transfer.
+// NOTE: confirm accountName exactly matches the name on the CBE account.
+export const cbeBankDetails = {
+  bankName: "Commercial Bank of Ethiopia (CBE)",
+  accountNumber: "1000132533516",
+  accountName: "Henok Amare Abebe",
+};
 
 // Decode JWT to get user id
 const parseToken = (token) => {
