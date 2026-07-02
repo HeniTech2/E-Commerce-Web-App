@@ -71,6 +71,10 @@ export const placeOrderCBE = (formData) =>
 export const verifyCBEPayment = (orderId, approve) =>
   api("/api/order/cbe/verify", { method: "POST", body: JSON.stringify({ orderId, approve }) });
 
+// AI shopping assistant
+export const sendChatMessage = (message, history) =>
+  api("/api/chat/message", { method: "POST", body: JSON.stringify({ message, history }) });
+
 export const getUserOrders = (userId) =>
   api("/api/order/userorders", { method: "POST", body: JSON.stringify({ userId }) });
 
