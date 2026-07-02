@@ -160,6 +160,15 @@ const placeOrderChapa = async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return res.json({ success: false, message: "User not found" });
 
+    // BASE_URL/CLIENT_URL must be set to full, valid URLs (e.g. https://...) —
+    // Chapa rejects the request outright if callback_url isn't a real URL.
+    if (!process.env.BASE_URL || !/^https?:\/\//.test(process.env.BASE_URL)) {
+      return res.json({ success: false, message: "Server misconfiguration: BASE_URL is not set correctly. Please contact support." });
+    }
+    if (!process.env.CLIENT_URL || !/^https?:\/\//.test(process.env.CLIENT_URL)) {
+      return res.json({ success: false, message: "Server misconfiguration: CLIENT_URL is not set correctly. Please contact support." });
+    }
+
     const newOrder = await prisma.order.create({
       data: {
         userId,
@@ -172,7 +181,9 @@ const placeOrderChapa = async (req, res) => {
       },
     });
 
-    const txRef = `marqato-${newOrder.id}-${Date.now()}`;
+    // Chapa caps tx_ref at 50 chars — a full UUID-based ref overflows that,
+    // so use a short, still-unique ref instead (order is looked up by txRef later).
+    const txRef = `mq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
     await prisma.order.update({
       where: { id: newOrder.id },
@@ -192,7 +203,8 @@ const placeOrderChapa = async (req, res) => {
         return_url: `${process.env.CLIENT_URL}/order-success?orderId=${newOrder.id}`,
         customization: {
           title: "Marqato Payment",
-          description: `Order #${newOrder.id}`,
+          // Chapa only allows letters, numbers, hyphens, underscores, spaces, dots — no "#"
+          description: `Order ${newOrder.id}`,
         },
       },
       {
@@ -210,8 +222,19 @@ const placeOrderChapa = async (req, res) => {
       res.json({ success: false, message: "Failed to initialize Chapa payment" });
     }
   } catch (error) {
-    console.log(error?.response?.data || error.message);
-    res.json({ success: false, message: error.message });
+    const chapaError = error?.response?.data;
+    console.log(chapaError || error.message);
+
+    // Surface Chapa's actual validation reason instead of the generic
+    // "Request failed with status code 400" Axios message.
+    let message = error.message;
+    if (chapaError?.message && typeof chapaError.message === "object") {
+      message = Object.values(chapaError.message).flat().join(" ");
+    } else if (typeof chapaError?.message === "string") {
+      message = chapaError.message;
+    }
+
+    res.json({ success: false, message });
   }
 };
 
