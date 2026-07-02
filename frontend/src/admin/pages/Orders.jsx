@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getAllOrders, updateOrderStatus } from "../../api";
+import { getAllOrders, updateOrderStatus, verifyCBEPayment } from "../../api";
 import { currency } from "../../context/ShopContext";
 import { HiOutlineClipboardCopy, HiCheck } from "react-icons/hi";
 
@@ -10,6 +10,8 @@ const statusStyle = (status) => {
     case "Delivered": return "bg-success/10 text-success";
     case "Shipped": return "bg-primaryLight text-primary";
     case "Packing": return "bg-warning/10 text-warning";
+    case "Pending Verification": return "bg-warning/10 text-warning";
+    case "Payment Rejected": return "bg-danger/10 text-danger";
     default: return "bg-surface text-stone";
   }
 };
@@ -46,6 +48,7 @@ const CopyableRef = ({ value }) => {
 const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [verifying, setVerifying] = useState(null); // orderId currently being approved/rejected
 
   useEffect(() => {
     getAllOrders().then((data) => {
@@ -57,6 +60,21 @@ const AdminOrders = () => {
   const handleStatusChange = async (orderId, status) => {
     setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status } : o));
     await updateOrderStatus(orderId, status);
+  };
+
+  const handleVerify = async (orderId, approve) => {
+    setVerifying(orderId);
+    const data = await verifyCBEPayment(orderId, approve);
+    if (data.success) {
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? { ...o, status: approve ? "Order Placed" : "Payment Rejected", payment: approve }
+            : o
+        )
+      );
+    }
+    setVerifying(null);
   };
 
   if (loading) return <div className="p-8 text-stone text-sm">Loading orders…</div>;
@@ -74,6 +92,8 @@ const AdminOrders = () => {
         <div className="space-y-4">
           {orders.map((o) => {
             const isChapa = o.paymentMethod === "Chapa";
+            const isCbe = o.paymentMethod === "CBE Transfer";
+            const isPendingCbe = isCbe && o.status === "Pending Verification";
             return (
               <div key={o.id} className="bg-white border border-border rounded-2xl shadow-card p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -87,15 +107,61 @@ const AdminOrders = () => {
                     <span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${o.payment ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
                       {o.payment ? "Paid" : "Unpaid"}
                     </span>
-                    <select
-                      value={o.status}
-                      onChange={(e) => handleStatusChange(o.id, e.target.value)}
-                      className="border border-border bg-paper2 rounded-lg px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                      {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    {!isPendingCbe && (
+                      <select
+                        value={o.status}
+                        onChange={(e) => handleStatusChange(o.id, e.target.value)}
+                        className="border border-border bg-paper2 rounded-lg px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-primary/30"
+                      >
+                        {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    )}
                   </div>
                 </div>
+
+                {/* CBE transfer — screenshot + tx ID + approve/reject */}
+                {isCbe && (
+                  <div className="mb-3 border border-border rounded-xl p-4 bg-paper2">
+                    <div className="flex flex-wrap items-start gap-4">
+                      {o.txProof && (
+                        <a href={o.txProof} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                          <img
+                            src={o.txProof}
+                            alt="Transfer screenshot"
+                            className="w-24 h-24 object-cover rounded-lg border border-border hover:opacity-80 transition-opacity"
+                          />
+                        </a>
+                      )}
+                      <div className="flex-1 min-w-[180px]">
+                        <p className="text-xs text-stone mb-1">CBE transaction ID</p>
+                        <p className="font-mono text-sm font-semibold mb-3">{o.txId || "—"}</p>
+
+                        {isPendingCbe ? (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleVerify(o.id, true)}
+                              disabled={verifying === o.id}
+                              className="bg-success text-white text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                            >
+                              {verifying === o.id ? "..." : "✓ Approve payment"}
+                            </button>
+                            <button
+                              onClick={() => handleVerify(o.id, false)}
+                              disabled={verifying === o.id}
+                              className="bg-danger text-white text-xs font-semibold px-4 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                            >
+                              {verifying === o.id ? "..." : "✕ Reject"}
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-stone">
+                            {o.status === "Payment Rejected" ? "This transfer was rejected." : "Verified ✓"}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Chapa transaction reference — proof of payment */}
                 {isChapa && o.txRef && (
