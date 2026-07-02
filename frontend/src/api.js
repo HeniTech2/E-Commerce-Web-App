@@ -60,6 +60,17 @@ export const placeOrderCOD = (userId, items, amount, address) =>
 export const placeOrderChapa = (userId, items, amount, address) =>
   api("/api/order/chapa", { method: "POST", body: JSON.stringify({ userId, items, amount, address }) });
 
+// CBE Bank Transfer — multipart because it includes a screenshot file
+export const placeOrderCBE = (formData) =>
+  fetch(`${BASE_URL}/api/order/cbe`, {
+    method: "POST",
+    headers: { token: localStorage.getItem("marqato_token") },
+    body: formData,
+  }).then((r) => r.json());
+
+export const verifyCBEPayment = (orderId, approve) =>
+  api("/api/order/cbe/verify", { method: "POST", body: JSON.stringify({ orderId, approve }) });
+
 export const getUserOrders = (userId) =>
   api("/api/order/userorders", { method: "POST", body: JSON.stringify({ userId }) });
 
@@ -85,10 +96,6 @@ export const getWishlist = (userId) =>
 
 export const toggleWishlistAPI = (userId, productId) =>
   api("/api/wishlist/toggle", { method: "POST", body: JSON.stringify({ userId, productId }) });
-
-// AI Chat Assistant
-export const sendChatMessage = (message, history = []) =>
-  api("/api/chat/message", { method: "POST", body: JSON.stringify({ message, history }) });
 
 // ── Image keys — these are saved as item.image in the DB ─────────────────────
 const IMAGE_KEYS = new Set([
