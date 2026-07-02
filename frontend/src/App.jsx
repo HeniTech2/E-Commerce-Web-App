@@ -23,6 +23,7 @@ import AdminCustomizer from "./admin/pages/Customizer";
 import { ThemeProvider } from "./admin/context/ThemeContext";
 import { StorefrontThemeProvider } from "./context/StorefrontThemeContext";
 import StorefrontBackground from "./components/StorefrontBackground";
+import ChatWidget from "./components/ChatWidget";
 
 function App() {
   return (
@@ -70,6 +71,7 @@ function App() {
                 </main>
                 <Footer />
               </div>
+              <ChatWidget />
             </StorefrontBackground>
           </StorefrontThemeProvider>
         }
