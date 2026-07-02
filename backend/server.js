@@ -12,6 +12,7 @@ import orderRouter from "./routes/orderRoute.js";
 import wishlistRouter from "./routes/wishlistRoute.js";
 import contentRouter from "./routes/contentRoute.js";
 import customizerRouter from "./routes/customizerRoute.js";
+import chatRouter from "./routes/chatRoute.js";
 
 
 const app = express();
@@ -61,6 +62,16 @@ const adminLimiter = rateLimit({
   message: {
     success: false,
     message: "Too many admin requests, please try again later.",
+  },
+});
+
+
+const chatLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: {
+    success: false,
+    message: "You're sending messages too fast. Please wait a bit and try again.",
   },
 });
 
@@ -175,6 +186,13 @@ app.use(
   "/api/customizer",
   limiter,
   customizerRouter
+);
+
+
+app.use(
+  "/api/chat",
+  chatLimiter,
+  chatRouter
 );
 
 
