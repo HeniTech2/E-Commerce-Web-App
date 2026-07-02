@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { sendChatMessage } from "../api";
 
 const GREETING = {
@@ -13,12 +13,40 @@ const ChatWidget = () => {
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceOn, setVoiceOn] = useState(false);
+  const [callMode, setCallMode] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+
   const scrollRef = useRef(null);
   const recognitionRef = useRef(null);
+  const restartTimeoutRef = useRef(null);
+
+  // Refs mirror latest state so the recognition/speech callbacks
+  // (created once) never see stale closures.
+  const callModeRef = useRef(false);
+  const loadingRef = useRef(false);
+  const speakingRef = useRef(false);
+  const inputRef = useRef("");
+  const sendMessageRef = useRef(() => {});
 
   const speechRecognitionSupported =
     typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const speechSynthesisSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+
+  useEffect(() => {
+    callModeRef.current = callMode;
+  }, [callMode]);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    speakingRef.current = speaking;
+  }, [speaking]);
+
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -27,6 +55,28 @@ const ChatWidget = () => {
   }, [messages, open, loading]);
 
   // ── Voice input (speech-to-text) ────────────────────────────────
+  const startListening = useCallback(() => {
+    if (!recognitionRef.current || loadingRef.current || speakingRef.current) return;
+    try {
+      setInput("");
+      recognitionRef.current.start();
+      setListening(true);
+    } catch {
+      // start() throws if already running — safe to ignore
+    }
+  }, []);
+
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+    }
+    setListening(false);
+  }, []);
+
   useEffect(() => {
     if (!speechRecognitionSupported) return;
 
@@ -45,83 +95,159 @@ const ChatWidget = () => {
     };
 
     recognition.onerror = () => setListening(false);
-    recognition.onend = () => setListening(false);
+
+    recognition.onend = () => {
+      setListening(false);
+
+      if (!callModeRef.current) return;
+
+      const text = inputRef.current.trim();
+
+      if (text) {
+        sendMessageRef.current(text);
+      } else {
+        // Silence — try listening again shortly, as long as we're
+        // still in call mode and nothing else is happening.
+        restartTimeoutRef.current = setTimeout(() => {
+          if (callModeRef.current && !loadingRef.current && !speakingRef.current) {
+            startListening();
+          }
+        }, 700);
+      }
+    };
 
     recognitionRef.current = recognition;
 
-    return () => recognition.stop();
+    return () => {
+      recognition.stop();
+      clearTimeout(restartTimeoutRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [startListening]);
 
   const toggleListening = () => {
-    if (!recognitionRef.current) return;
     if (listening) {
-      recognitionRef.current.stop();
-      setListening(false);
+      stopListening();
     } else {
-      setInput("");
-      recognitionRef.current.start();
-      setListening(true);
+      startListening();
     }
   };
 
   // ── Voice output (text-to-speech) ───────────────────────────────
-  const speak = (text) => {
-    if (!speechSynthesisSupported) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
-    window.speechSynthesis.speak(utterance);
+  const speak = useCallback(
+    (text, onDone) => {
+      if (!speechSynthesisSupported) {
+        onDone?.();
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1;
+      utterance.onstart = () => setSpeaking(true);
+      utterance.onend = () => {
+        setSpeaking(false);
+        onDone?.();
+      };
+      utterance.onerror = () => {
+        setSpeaking(false);
+        onDone?.();
+      };
+      window.speechSynthesis.speak(utterance);
+    },
+    [speechSynthesisSupported]
+  );
+
+  // ── Sending a message (typed or spoken) ─────────────────────────
+  const sendMessage = useCallback(
+    async (text) => {
+      const trimmed = text.trim();
+      if (!trimmed || loadingRef.current) return;
+
+      stopListening();
+      clearTimeout(restartTimeoutRef.current);
+
+      setMessages((prev) => {
+        const next = [...prev, { role: "user", text: trimmed }];
+
+        setInput("");
+        setLoading(true);
+
+        const history = next
+          .filter((m) => m !== GREETING)
+          .map((m) => ({ role: m.role, text: m.text }));
+
+        sendChatMessage(trimmed, history)
+          .then((data) => {
+            const replyText = data.success
+              ? data.reply
+              : data.message || "Something went wrong. Please try again.";
+
+            setMessages((p) => [...p, { role: "assistant", text: replyText }]);
+
+            if (voiceOn || callModeRef.current) {
+              speak(replyText, () => {
+                if (callModeRef.current) startListening();
+              });
+            }
+          })
+          .catch(() => {
+            const errText = "I couldn't reach the server. Please check your connection and try again.";
+            setMessages((p) => [...p, { role: "assistant", text: errText }]);
+
+            if (voiceOn || callModeRef.current) {
+              speak(errText, () => {
+                if (callModeRef.current) startListening();
+              });
+            }
+          })
+          .finally(() => setLoading(false));
+
+        return next;
+      });
+    },
+    [voiceOn, speak, startListening, stopListening]
+  );
+
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  }, [sendMessage]);
+
+  const handleSend = (e) => {
+    e.preventDefault();
+    sendMessage(input);
+  };
+
+  // ── Call mode (hands-free) ──────────────────────────────────────
+  const toggleCallMode = () => {
+    if (callMode) {
+      setCallMode(false);
+      window.speechSynthesis?.cancel();
+      stopListening();
+      clearTimeout(restartTimeoutRef.current);
+    } else {
+      setCallMode(true);
+      setOpen(true);
+      startListening();
+    }
   };
 
   useEffect(() => {
-    if (!voiceOn) return;
-    const last = messages[messages.length - 1];
-    if (last && last.role === "assistant" && last !== GREETING) {
-      speak(last.text);
+    // Stop everything if the panel is closed mid-call
+    if (!open && callMode) {
+      setCallMode(false);
+      window.speechSynthesis?.cancel();
+      stopListening();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, voiceOn]);
+  }, [open]);
 
-  const handleSend = async (e) => {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text || loading) return;
-
-    if (listening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setListening(false);
-    }
-
-    const nextMessages = [...messages, { role: "user", text }];
-    setMessages(nextMessages);
-    setInput("");
-    setLoading(true);
-
-    try {
-      const history = nextMessages
-        .filter((m) => m !== GREETING)
-        .map((m) => ({ role: m.role, text: m.text }));
-
-      const data = await sendChatMessage(text, history);
-
-      if (data.success) {
-        setMessages((prev) => [...prev, { role: "assistant", text: data.reply }]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", text: data.message || "Something went wrong. Please try again." },
-        ]);
-      }
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: "I couldn't reach the server. Please check your connection and try again." },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  let callStatus = "";
+  if (callMode) {
+    if (speaking) callStatus = "🔊 Speaking...";
+    else if (loading) callStatus = "💭 Thinking...";
+    else if (listening) callStatus = "🎙️ Listening...";
+    else callStatus = "Call active";
+  }
 
   return (
     <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end">
@@ -131,10 +257,41 @@ const ChatWidget = () => {
           <div className="bg-primary text-paper px-4 py-3 flex items-center justify-between">
             <div>
               <p className="font-display font-semibold text-sm">Selam — Marqato Assistant</p>
-              <p className="text-xs text-primaryLight/90">AI-powered · usually replies instantly</p>
+              <p className="text-xs text-primaryLight/90">
+                {callMode ? callStatus : "AI-powered · usually replies instantly"}
+              </p>
             </div>
             <div className="flex items-center gap-2">
-              {speechSynthesisSupported && (
+              {speechRecognitionSupported && speechSynthesisSupported && (
+                <button
+                  onClick={toggleCallMode}
+                  aria-label={callMode ? "End voice call" : "Start voice call"}
+                  title={callMode ? "End voice call" : "Start hands-free voice call"}
+                  className={`text-paper/80 hover:text-paper transition-colors ${
+                    callMode ? "text-paper animate-pulse" : ""
+                  }`}
+                >
+                  {callMode ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path
+                        d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45c.85.3 1.75.49 2.68.57a2 2 0 011.85 2v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 011 4.18 2 2 0 013 2h3a2 2 0 012 1.72c.08.93.27 1.83.57 2.68a2 2 0 01-.45 2.11L6.85 9.78"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path d="M23 1L1 23" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path
+                        d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.97.36 1.92.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.89.34 1.84.57 2.81.7A2 2 0 0122 16.92z"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  )}
+                </button>
+              )}
+              {speechSynthesisSupported && !callMode && (
                 <button
                   onClick={() => {
                     setVoiceOn((v) => !v);
@@ -209,46 +366,61 @@ const ChatWidget = () => {
             )}
           </div>
 
-          {/* Input */}
-          <form onSubmit={handleSend} className="border-t border-border p-2 flex gap-2 bg-paper">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={listening ? "Listening..." : "Ask about a product, price, or order..."}
-              className="flex-1 text-sm px-3 py-2 rounded-xl border border-border bg-paper2 focus:outline-none focus:ring-2 focus:ring-primary/40"
-              disabled={loading}
-            />
-            {speechRecognitionSupported && (
+          {/* Call mode banner */}
+          {callMode && (
+            <div className="px-3 py-2 bg-primaryLight border-t border-border flex items-center justify-between">
+              <span className="text-xs font-medium text-primaryDark">{callStatus}</span>
               <button
-                type="button"
-                onClick={toggleListening}
+                onClick={toggleCallMode}
+                className="text-xs font-semibold text-danger hover:underline"
+              >
+                End call
+              </button>
+            </div>
+          )}
+
+          {/* Input (hidden during hands-free call) */}
+          {!callMode && (
+            <form onSubmit={handleSend} className="border-t border-border p-2 flex gap-2 bg-paper">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={listening ? "Listening..." : "Ask about a product, price, or order..."}
+                className="flex-1 text-sm px-3 py-2 rounded-xl border border-border bg-paper2 focus:outline-none focus:ring-2 focus:ring-primary/40"
                 disabled={loading}
-                aria-label={listening ? "Stop recording" : "Speak your question"}
-                title={listening ? "Stop recording" : "Speak your question"}
-                className={`px-3 rounded-xl border transition-colors disabled:opacity-40 ${
-                  listening
-                    ? "bg-danger text-paper border-danger animate-pulse"
-                    : "bg-paper2 text-stone border-border hover:text-primary hover:border-primary"
-                }`}
+              />
+              {speechRecognitionSupported && (
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  disabled={loading}
+                  aria-label={listening ? "Stop recording" : "Speak your question"}
+                  title={listening ? "Stop recording" : "Speak your question"}
+                  className={`px-3 rounded-xl border transition-colors disabled:opacity-40 ${
+                    listening
+                      ? "bg-danger text-paper border-danger animate-pulse"
+                      : "bg-paper2 text-stone border-border hover:text-primary hover:border-primary"
+                  }`}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="9" y="2" width="6" height="12" rx="3" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M5 10a7 7 0 0014 0M12 19v3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={loading || !input.trim()}
+                className="bg-primary text-paper px-3 rounded-xl disabled:opacity-40 hover:bg-primaryDark transition-colors"
+                aria-label="Send message"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="2" width="6" height="12" rx="3" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M5 10a7 7 0 0014 0M12 19v3" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
-            )}
-            <button
-              type="submit"
-              disabled={loading || !input.trim()}
-              className="bg-primary text-paper px-3 rounded-xl disabled:opacity-40 hover:bg-primaryDark transition-colors"
-              aria-label="Send message"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </form>
+            </form>
+          )}
         </div>
       )}
 
