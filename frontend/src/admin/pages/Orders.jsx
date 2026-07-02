@@ -49,6 +49,13 @@ const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(null); // orderId currently being approved/rejected
+  const [toast, setToast] = useState(null); // { type: "success" | "error", message }
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     getAllOrders().then((data) => {
@@ -73,6 +80,12 @@ const AdminOrders = () => {
             : o
         )
       );
+      setToast({
+        type: "success",
+        message: approve ? "Payment approved — order confirmed and customer notified." : "Payment rejected — customer notified.",
+      });
+    } else {
+      setToast({ type: "error", message: data.message || "Something went wrong. Please try again." });
     }
     setVerifying(null);
   };
@@ -81,6 +94,15 @@ const AdminOrders = () => {
 
   return (
     <div className="p-8">
+      {toast && (
+        <div
+          className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl shadow-card text-sm font-medium ${
+            toast.type === "success" ? "bg-success text-white" : "bg-danger text-white"
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
       <h1 className="font-display text-3xl font-bold mb-1">Orders</h1>
       <p className="text-stone text-sm mb-8">{orders.length} orders total</p>
 

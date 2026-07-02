@@ -98,8 +98,20 @@ const OrderSuccess = () => {
           )}
           <div className="flex justify-between text-sm mb-2">
             <span className="text-stone">Payment status</span>
-            <span className={`font-medium ${order.payment ? "text-success" : "text-danger"}`}>
-              {order.payment ? "Paid" : "Pending"}
+            <span className={`font-medium ${
+              order.payment
+                ? "text-success"
+                : order.paymentMethod === "CBE Transfer"
+                ? "text-warning"
+                : "text-stone"
+            }`}>
+              {order.payment
+                ? "Paid"
+                : order.paymentMethod === "CBE Transfer"
+                ? "Awaiting verification"
+                : order.paymentMethod === "COD"
+                ? "Pay on delivery"
+                : "Pending"}
             </span>
           </div>
           <div className="flex justify-between text-sm mb-2">
@@ -113,6 +125,11 @@ const OrderSuccess = () => {
           {isChapa && order.txRef && (
             <p className="text-xs text-stoneLight mt-4 leading-relaxed">
               Keep this transaction ID as proof of payment. If you paid via CBE through Chapa and have any issue with your order, share this ID with our support team.
+            </p>
+          )}
+          {order.paymentMethod === "CBE Transfer" && !order.payment && (
+            <p className="text-xs text-stoneLight mt-4 leading-relaxed">
+              Thanks — your transfer details were received. We're confirming your payment now and will update your order status within a few hours.
             </p>
           )}
         </div>
