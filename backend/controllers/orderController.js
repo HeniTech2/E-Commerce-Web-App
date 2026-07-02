@@ -48,6 +48,106 @@ const placeOrder = async (req, res) => {
   }
 };
 
+// CBE Bank Transfer — customer submits tx ID + screenshot, held for admin review
+const placeOrderCBE = async (req, res) => {
+  try {
+    const { userId, amount, txId } = req.body;
+    let { items, address } = req.body;
+
+    if (!userId) {
+      return res.json({ success: false, message: "You must be logged in as a customer to place an order." });
+    }
+
+    if (!txId || !txId.trim()) {
+      return res.json({ success: false, message: "Please enter the CBE transaction ID from your transfer." });
+    }
+
+    if (!req.file) {
+      return res.json({ success: false, message: "Please upload a screenshot of your bank transfer." });
+    }
+
+    try {
+      items = typeof items === "string" ? JSON.parse(items) : items;
+      address = typeof address === "string" ? JSON.parse(address) : address;
+    } catch {
+      return res.json({ success: false, message: "Invalid order data." });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.json({ success: false, message: "User account not found. Please log in again." });
+    }
+
+    const newOrder = await prisma.order.create({
+      data: {
+        userId,
+        items,
+        address,
+        amount: Number(amount),
+        paymentMethod: "CBE Transfer",
+        payment: false,
+        status: "Pending Verification",
+        txId: txId.trim(),
+        txProof: req.file.path,
+        date: BigInt(Date.now()),
+      },
+    });
+
+    // Stock is NOT decremented yet — only once admin verifies the transfer
+    await prisma.user.update({ where: { id: userId }, data: { cartData: {} } });
+
+    if (user.email) {
+      await sendOrderConfirmationEmail(user.email, user.name, serializeOrder(newOrder));
+    }
+
+    res.json({ success: true, message: "Order submitted for verification", order: serializeOrder(newOrder) });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+// Admin: Approve or reject a CBE transfer
+const verifyCBEPayment = async (req, res) => {
+  try {
+    const { orderId, approve } = req.body;
+
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return res.json({ success: false, message: "Order not found" });
+
+    if (approve) {
+      const updated = await prisma.order.update({
+        where: { id: orderId },
+        data: { payment: true, status: "Order Placed" },
+      });
+
+      await decrementStock(order.items);
+
+      const user = await prisma.user.findUnique({ where: { id: order.userId } });
+      if (user?.email) {
+        await sendStatusUpdateEmail(user.email, user.name, orderId, "Order Placed");
+      }
+
+      res.json({ success: true, message: "Payment verified — order confirmed", order: serializeOrder(updated) });
+    } else {
+      const updated = await prisma.order.update({
+        where: { id: orderId },
+        data: { status: "Payment Rejected" },
+      });
+
+      const user = await prisma.user.findUnique({ where: { id: order.userId } });
+      if (user?.email) {
+        await sendStatusUpdateEmail(user.email, user.name, orderId, "Payment Rejected");
+      }
+
+      res.json({ success: true, message: "Payment rejected", order: serializeOrder(updated) });
+    }
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
 // Chapa Payment
 const placeOrderChapa = async (req, res) => {
   try {
@@ -215,6 +315,8 @@ const updateStatus = async (req, res) => {
 
 export {
   placeOrder,
+  placeOrderCBE,
+  verifyCBEPayment,
   placeOrderChapa,
   verifyChapaPayment,
   allOrders,
