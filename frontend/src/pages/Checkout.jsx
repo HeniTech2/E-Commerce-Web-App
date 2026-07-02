@@ -1,8 +1,8 @@
 import { useContext, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { HiCheck } from "react-icons/hi";
-import { ShopContext, currency } from "../context/ShopContext";
-import { placeOrderCOD, placeOrderChapa } from "../api";
+import { ShopContext, currency, cbeBankDetails } from "../context/ShopContext";
+import { placeOrderCOD, placeOrderChapa, placeOrderCBE } from "../api";
 
 const Checkout = () => {
   const { cartItems, cartTotal, clearCart, userId, paymentProviders, token } = useContext(ShopContext);
@@ -12,6 +12,10 @@ const Checkout = () => {
   const [form, setForm] = useState({ name: "", phone: "", address: "", city: "Addis Ababa" });
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
+  const [cbeTxId, setCbeTxId] = useState("");
+  const [cbeProof, setCbeProof] = useState(null);
+  const [cbeProofPreview, setCbeProofPreview] = useState("");
+  const [copied, setCopied] = useState(false);
 
   if (cartItems.length === 0) { navigate("/cart"); return null; }
 
@@ -58,6 +62,23 @@ const Checkout = () => {
 
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  const handleCbeProofChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCbeProof(file);
+    setCbeProofPreview(URL.createObjectURL(file));
+  };
+
+  const copyAccountNumber = async () => {
+    try {
+      await navigator.clipboard.writeText(cbeBankDetails.accountNumber);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard API may be unavailable — fail silently
+    }
+  };
+
   const handleConfirm = async () => {
     setProcessing(true);
     setError("");
@@ -81,6 +102,32 @@ const Checkout = () => {
           window.location.href = data.checkout_url;
         } else {
           setError(data.message || "Failed to initialize payment");
+        }
+      } else if (method?.id === "cbe") {
+        if (!cbeTxId.trim()) {
+          setError("Please enter the transaction ID from your CBE transfer.");
+          setProcessing(false);
+          return;
+        }
+        if (!cbeProof) {
+          setError("Please upload a screenshot of your bank transfer.");
+          setProcessing(false);
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("items", JSON.stringify(items));
+        formData.append("address", JSON.stringify(address));
+        formData.append("amount", amount);
+        formData.append("txId", cbeTxId.trim());
+        formData.append("txProof", cbeProof);
+
+        const data = await placeOrderCBE(formData);
+        if (data.success) {
+          clearCart();
+          navigate("/order-success", { state: { order: data.order } });
+        } else {
+          setError(data.message || "Failed to submit order for verification");
         }
       } else {
         const data = await placeOrderCOD(userId, items, amount, address);
@@ -182,6 +229,65 @@ const Checkout = () => {
                 {method?.id === "chapa" && (
                   <p className="text-xs text-stone mt-1">You'll be redirected to Chapa's secure payment page.</p>
                 )}
+
+                {method?.id === "cbe" && (
+                  <div className="mt-4 space-y-4">
+                    <div className="bg-primaryLight border border-primary/20 rounded-xl p-4">
+                      <p className="text-xs text-stone mb-3">
+                        Transfer <strong>{currency} {(cartTotal + 150).toLocaleString()}</strong> to this CBE account, then fill in the details below.
+                      </p>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between items-center">
+                          <span className="text-stone">Bank</span>
+                          <span className="font-medium">{cbeBankDetails.bankName}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-stone">Account name</span>
+                          <span className="font-medium">{cbeBankDetails.accountName}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-stone">Account number</span>
+                          <button
+                            type="button"
+                            onClick={copyAccountNumber}
+                            className="font-mono font-semibold bg-white border border-border rounded-lg px-2.5 py-1 hover:border-primary/40 transition-colors"
+                            title="Click to copy"
+                          >
+                            {cbeBankDetails.accountNumber} {copied ? "✓" : "⧉"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-stone mb-1.5">CBE transaction ID</label>
+                      <input
+                        value={cbeTxId}
+                        onChange={(e) => setCbeTxId(e.target.value)}
+                        placeholder="e.g. FT24183XXXXX"
+                        className={inputClass}
+                      />
+                      <p className="text-[11px] text-stoneLight mt-1">Found in your CBE SMS receipt or the CBE Mobile / CBE Birr app.</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-stone mb-1.5">Screenshot of the transfer</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleCbeProofChange}
+                        className="text-xs w-full border border-border bg-paper2 rounded-xl px-3 py-2.5 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-primary file:text-white file:text-xs file:font-semibold file:cursor-pointer cursor-pointer"
+                      />
+                      {cbeProofPreview && (
+                        <img src={cbeProofPreview} alt="Transfer screenshot preview" className="mt-3 max-h-48 rounded-xl border border-border object-contain" />
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-stone bg-surface rounded-lg px-3 py-2">
+                      Your order will show as <strong>Pending Verification</strong> until we confirm the transfer — usually within a few hours.
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setStep(2)} className="border border-border rounded-xl px-6 py-3 font-semibold text-sm hover:bg-surface transition-colors">Back</button>
@@ -190,7 +296,13 @@ const Checkout = () => {
                   disabled={processing}
                   className="bg-primary text-white rounded-xl px-8 py-3 font-semibold text-sm hover:bg-primaryDark transition-colors disabled:opacity-60"
                 >
-                  {processing ? "Processing…" : method?.id === "chapa" ? `Pay ETB ${(cartTotal + 150).toLocaleString()} via Chapa` : `Confirm — ${currency} ${(cartTotal + 150).toLocaleString()}`}
+                  {processing
+                    ? "Processing…"
+                    : method?.id === "chapa"
+                    ? `Pay ETB ${(cartTotal + 150).toLocaleString()} via Chapa`
+                    : method?.id === "cbe"
+                    ? "Submit for verification"
+                    : `Confirm — ${currency} ${(cartTotal + 150).toLocaleString()}`}
                 </button>
               </div>
             </div>
