@@ -47,23 +47,47 @@ export const SF_DEFAULTS = {
   newsletterSectionColor: "",
 };
 
+// The last settings are remembered in the browser, so the shop shows your own
+// colours and hero text immediately instead of flashing the defaults first.
+const THEME_CACHE_KEY = "marqato_theme_cache_v1";
+
+const readThemeCache = () => {
+  try {
+    const raw = localStorage.getItem(THEME_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const buildTheme = (settings) => ({
+  ...SF_DEFAULTS,
+  ...settings,
+  storefrontBgOverlay: parseFloat(
+    settings.storefrontBgOverlay ?? SF_DEFAULTS.storefrontBgOverlay
+  ),
+  announcementEnabled:
+    settings.announcementEnabled === "true" ||
+    settings.announcementEnabled === true,
+});
+
 export const StorefrontThemeProvider = ({ children }) => {
-  const [sfTheme, setSfTheme] = useState(SF_DEFAULTS);
+  const [sfTheme, setSfTheme] = useState(() => {
+    const cached = readThemeCache();
+    return cached ? buildTheme(cached) : SF_DEFAULTS;
+  });
 
   useEffect(() => {
     getAdminSettings()
       .then((data) => {
         if (data.success && data.settings) {
-          setSfTheme({
-            ...SF_DEFAULTS,
-            ...data.settings,
-            storefrontBgOverlay: parseFloat(
-              data.settings.storefrontBgOverlay ?? SF_DEFAULTS.storefrontBgOverlay
-            ),
-            announcementEnabled:
-              data.settings.announcementEnabled === "true" ||
-              data.settings.announcementEnabled === true,
-          });
+          setSfTheme(buildTheme(data.settings));
+          try {
+            localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(data.settings));
+          } catch {
+            // Storage full or blocked — fine, we just skip the cache
+          }
         }
       })
       .catch(() => {});

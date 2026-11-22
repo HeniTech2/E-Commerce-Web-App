@@ -52,10 +52,26 @@ const parseToken = (token) => {
   }
 };
 
+// The last product list is remembered in the browser, so a returning visitor
+// sees names and photos instantly while the fresh list loads in the background.
+const PRODUCTS_CACHE_KEY = "marqato_products_cache_v1";
+
+const readProductsCache = () => {
+  try {
+    const raw = localStorage.getItem(PRODUCTS_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 export const ShopProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem("marqato_token") || "");
-  const [products, setProducts] = useState([]);
-  const [productsLoading, setProductsLoading] = useState(true);
+  const [cachedProducts] = useState(readProductsCache);
+  const [products, setProducts] = useState(cachedProducts || []);
+  // Only show "loading" when there is nothing to show yet
+  const [productsLoading, setProductsLoading] = useState(!cachedProducts);
   const [cart, setCart] = useState({});
   const [orders, setOrders] = useState([]);
   const [wishlist, setWishlist] = useState([]); // array of product ids
@@ -64,10 +80,16 @@ export const ShopProvider = ({ children }) => {
 
   // ── Products ──────────────────────────────────────────────────
   const loadProducts = useCallback(async () => {
-    setProductsLoading(true);
     try {
       const data = await fetchProducts();
-      if (data.success) setProducts(data.products);
+      if (data.success) {
+        setProducts(data.products);
+        try {
+          localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(data.products));
+        } catch {
+          // Storage full or blocked — the site still works, just without the instant start
+        }
+      }
     } catch (e) {
       console.error("Failed to load products", e);
     } finally {
