@@ -15,6 +15,19 @@ import customizerRouter from "./routes/customizerRoute.js";
 import chatRouter from "./routes/chatRoute.js";
 
 
+// ── Required settings ─────────────────────────────────────────────
+
+for (const name of ["JWT_SECRET", "DATABASE_URL"]) {
+  if (!process.env[name]) {
+    console.error(`❌ Missing required environment variable: ${name}`);
+    process.exit(1);
+  }
+}
+
+// Customer login tokens expire after 7 days unless you set JWT_EXPIRES_IN
+process.env.JWT_EXPIRES_IN ||= "7d";
+
+
 const app = express();
 
 app.set("trust proxy", 1);
@@ -52,16 +65,6 @@ const authLimiter = rateLimit({
   message: {
     success: false,
     message: "Too many login attempts, please try again later.",
-  },
-});
-
-
-const adminLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 500,
-  message: {
-    success: false,
-    message: "Too many admin requests, please try again later.",
   },
 });
 
@@ -118,12 +121,12 @@ app.use(
 
 // ── Body Parser ───────────────────────────────────────────────────
 
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "1mb" }));
 
 app.use(
   express.urlencoded({
     extended: true,
-    limit: "50mb",
+    limit: "1mb",
   })
 );
 
@@ -140,16 +143,27 @@ app.use(
 
 // ── Routes ────────────────────────────────────────────────────────
 
+// Strict limit only on login / register / admin login / contact form
+app.use(
+  [
+    "/api/user/login",
+    "/api/user/register",
+    "/api/user/admin",
+    "/api/user/contact",
+  ],
+  authLimiter
+);
+
 app.use(
   "/api/user",
-  authLimiter,
+  limiter,
   userRouter
 );
 
 
 app.use(
   "/api/product",
-  adminLimiter,
+  limiter,
   productRouter
 );
 
@@ -208,15 +222,36 @@ app.get("/", (req, res) => {
 
 
 
+// ── Not found (API) ───────────────────────────────────────────────
+
+app.use("/api", (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Not found",
+  });
+});
+
+
+
 // ── Error Handler ────────────────────────────────────────────────
 
 app.use((err, req, res, next) => {
 
-  console.error(err.stack);
+  // Upload problems (file too large, wrong type) are the customer's to fix
+  const status =
+    err.status ||
+    (err.name === "MulterError" ? 400 : 500);
 
-  res.status(500).json({
+  if (status >= 500) {
+    console.error(err.stack);
+  }
+
+  res.status(status).json({
     success: false,
-    message: "Internal server error",
+    message:
+      status < 500
+        ? err.message
+        : "Internal server error",
   });
 
 });

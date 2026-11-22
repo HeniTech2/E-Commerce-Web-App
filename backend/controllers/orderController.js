@@ -1,175 +1,207 @@
 import axios from "axios";
+import crypto from "crypto";
 import prisma from "../prismaClient.js";
 import { sendOrderConfirmationEmail, sendStatusUpdateEmail } from "../utils/mailer.js";
-import { decrementStock } from "./productController.js";
+import { priceOrder, cleanAddress, reserveStock, OrderError } from "../utils/orderPricing.js";
+
+const ALLOWED_STATUSES = [
+  "Order Placed",
+  "Packing",
+  "Shipped",
+  "Out for delivery",
+  "Delivered",
+  "Cancelled",
+];
+
+const CHAPA_HEADERS = () => ({ Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}` });
 
 const serializeOrder = (order) => ({
   ...order,
   date: Number(order.date),
 });
 
-// COD Order
+const fail = (res, status, message) => res.status(status).json({ success: false, message });
+
+// Customer-safe errors are shown; everything else is logged and hidden.
+const handleError = (res, error, label) => {
+  if (error instanceof OrderError) return fail(res, error.status, error.message);
+  console.error(`[order] ${label}:`, error?.response?.data || error);
+  return fail(res, 500, "Something went wrong. Please try again.");
+};
+
+// Emails must never slow down or break an order
+const sendEmailSafely = (task) => {
+  Promise.resolve()
+    .then(task)
+    .catch((err) => console.error("[mail]", err.message));
+};
+
+// ── COD ──────────────────────────────────────────────────────────
 const placeOrder = async (req, res) => {
   try {
-    const { userId, items, amount, address } = req.body;
+    const userId = req.userId;
 
-    if (!userId) {
-      return res.json({ success: false, message: "You must be logged in as a customer to place an order." });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return fail(res, 401, "User account not found. Please log in again.");
+
+    const address = cleanAddress(req.body.address);
+    const { items, amount } = await priceOrder(req.body.items);
+
+    // Take stock + create the order together: both happen or neither does
+    const order = await prisma.$transaction(async (tx) => {
+      await reserveStock(tx, items);
+      const created = await tx.order.create({
+        data: {
+          userId,
+          items,
+          address,
+          amount,
+          paymentMethod: "COD",
+          payment: false,
+          date: BigInt(Date.now()),
+        },
+      });
+      await tx.user.update({ where: { id: userId }, data: { cartData: {} } });
+      return created;
+    });
+
+    const safe = serializeOrder(order);
+    if (user.email) sendEmailSafely(() => sendOrderConfirmationEmail(user.email, user.name, safe));
+
+    res.json({ success: true, message: "Order Placed", order: safe });
+  } catch (error) {
+    handleError(res, error, "placeOrder");
+  }
+};
+
+// ── CBE bank transfer: held for admin review ─────────────────────
+const placeOrderCBE = async (req, res) => {
+  try {
+    const userId = req.userId;
+
+    const txId = typeof req.body.txId === "string" ? req.body.txId.trim() : "";
+    if (!/^[A-Za-z0-9_-]{6,40}$/.test(txId)) {
+      return fail(res, 400, "Please enter the CBE transaction ID from your transfer.");
+    }
+    if (!req.file) {
+      return fail(res, 400, "Please upload a screenshot of your bank transfer.");
     }
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      return res.json({ success: false, message: "User account not found. Please log in again." });
+    if (!user) return fail(res, 401, "User account not found. Please log in again.");
+
+    const address = cleanAddress(req.body.address);
+    const { items, amount } = await priceOrder(req.body.items);
+
+    // The same transfer receipt must not pay for two orders
+    const reused = await prisma.order.findFirst({
+      where: { paymentMethod: "CBE Transfer", txId, status: { not: "Payment Rejected" } },
+    });
+    if (reused) {
+      return fail(res, 409, "This transaction ID was already used for another order.");
     }
 
-    const newOrder = await prisma.order.create({
+    const order = await prisma.order.create({
       data: {
         userId,
         items,
         address,
         amount,
-        paymentMethod: "COD",
-        payment: false,
-        date: BigInt(Date.now()),
-      },
-    });
-
-    await prisma.user.update({ where: { id: userId }, data: { cartData: {} } });
-    await decrementStock(items);
-
-    if (user.email) {
-      await sendOrderConfirmationEmail(user.email, user.name, serializeOrder(newOrder));
-    }
-
-    res.json({ success: true, message: "Order Placed", order: serializeOrder(newOrder) });
-  } catch (error) {
-    console.log(error);
-    res.json({ success: false, message: error.message });
-  }
-};
-
-// CBE Bank Transfer — customer submits tx ID + screenshot, held for admin review
-const placeOrderCBE = async (req, res) => {
-  try {
-    const { userId, amount, txId } = req.body;
-    let { items, address } = req.body;
-
-    if (!userId) {
-      return res.json({ success: false, message: "You must be logged in as a customer to place an order." });
-    }
-
-    if (!txId || !txId.trim()) {
-      return res.json({ success: false, message: "Please enter the CBE transaction ID from your transfer." });
-    }
-
-    if (!req.file) {
-      return res.json({ success: false, message: "Please upload a screenshot of your bank transfer." });
-    }
-
-    try {
-      items = typeof items === "string" ? JSON.parse(items) : items;
-      address = typeof address === "string" ? JSON.parse(address) : address;
-    } catch {
-      return res.json({ success: false, message: "Invalid order data." });
-    }
-
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      return res.json({ success: false, message: "User account not found. Please log in again." });
-    }
-
-    const newOrder = await prisma.order.create({
-      data: {
-        userId,
-        items,
-        address,
-        amount: Number(amount),
         paymentMethod: "CBE Transfer",
         payment: false,
         status: "Pending Verification",
-        txId: txId.trim(),
+        txId,
         txProof: req.file.path,
         date: BigInt(Date.now()),
       },
     });
 
-    // Stock is NOT decremented yet — only once admin verifies the transfer
+    // Stock is taken only when the admin approves the transfer
     await prisma.user.update({ where: { id: userId }, data: { cartData: {} } });
 
-    if (user.email) {
-      await sendOrderConfirmationEmail(user.email, user.name, serializeOrder(newOrder));
-    }
+    const safe = serializeOrder(order);
+    if (user.email) sendEmailSafely(() => sendOrderConfirmationEmail(user.email, user.name, safe));
 
-    res.json({ success: true, message: "Order submitted for verification", order: serializeOrder(newOrder) });
+    res.json({ success: true, message: "Order submitted for verification", order: safe });
   } catch (error) {
-    console.log(error);
-    res.json({ success: false, message: error.message });
+    handleError(res, error, "placeOrderCBE");
   }
 };
 
-// Admin: Approve or reject a CBE transfer
+// Admin: approve or reject a CBE transfer
 const verifyCBEPayment = async (req, res) => {
   try {
     const { orderId, approve } = req.body;
+    if (typeof orderId !== "string") return fail(res, 400, "orderId is required");
 
     const order = await prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) return res.json({ success: false, message: "Order not found" });
+    if (!order) return fail(res, 404, "Order not found");
 
-    if (approve) {
-      const updated = await prisma.order.update({
-        where: { id: orderId },
-        data: { payment: true, status: "Order Placed" },
-      });
-
-      await decrementStock(order.items);
-
-      const user = await prisma.user.findUnique({ where: { id: order.userId } });
-      if (user?.email) {
-        await sendStatusUpdateEmail(user.email, user.name, orderId, "Order Placed");
-      }
-
-      res.json({ success: true, message: "Payment verified — order confirmed", order: serializeOrder(updated) });
-    } else {
-      const updated = await prisma.order.update({
-        where: { id: orderId },
-        data: { status: "Payment Rejected" },
-      });
-
-      const user = await prisma.user.findUnique({ where: { id: order.userId } });
-      if (user?.email) {
-        await sendStatusUpdateEmail(user.email, user.name, orderId, "Payment Rejected");
-      }
-
-      res.json({ success: true, message: "Payment rejected", order: serializeOrder(updated) });
+    if (order.paymentMethod !== "CBE Transfer" || order.status !== "Pending Verification") {
+      return fail(res, 409, "This order is not waiting for verification.");
     }
+
+    const user = await prisma.user.findUnique({ where: { id: order.userId } });
+    const approved = approve === true || approve === "true";
+
+    if (approved) {
+      const updated = await prisma.$transaction(async (tx) => {
+        // Only one admin click can win; a double click does nothing
+        const claimed = await tx.order.updateMany({
+          where: { id: orderId, status: "Pending Verification" },
+          data: { payment: true, status: "Order Placed" },
+        });
+        if (claimed.count === 0) throw new OrderError("This order was already processed.", 409);
+
+        await reserveStock(tx, order.items);
+        return tx.order.findUnique({ where: { id: orderId } });
+      });
+
+      if (user?.email) sendEmailSafely(() => sendStatusUpdateEmail(user.email, user.name, orderId, "Order Placed"));
+      return res.json({ success: true, message: "Payment verified — order confirmed", order: serializeOrder(updated) });
+    }
+
+    const claimed = await prisma.order.updateMany({
+      where: { id: orderId, status: "Pending Verification" },
+      data: { status: "Payment Rejected" },
+    });
+    if (claimed.count === 0) return fail(res, 409, "This order was already processed.");
+
+    const updated = await prisma.order.findUnique({ where: { id: orderId } });
+    if (user?.email) sendEmailSafely(() => sendStatusUpdateEmail(user.email, user.name, orderId, "Payment Rejected"));
+
+    res.json({ success: true, message: "Payment rejected", order: serializeOrder(updated) });
   } catch (error) {
-    console.log(error);
-    res.json({ success: false, message: error.message });
+    handleError(res, error, "verifyCBEPayment");
   }
 };
 
-// Chapa Payment
+// ── Chapa ────────────────────────────────────────────────────────
 const placeOrderChapa = async (req, res) => {
-  try {
-    const { userId, items, amount, address } = req.body;
+  let createdOrderId = null;
 
-    if (!userId) {
-      return res.json({ success: false, message: "You must be logged in as a customer to place an order." });
-    }
+  try {
+    const userId = req.userId;
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) return res.json({ success: false, message: "User not found" });
+    if (!user) return fail(res, 401, "User not found. Please log in again.");
 
-    // BASE_URL/CLIENT_URL must be set to full, valid URLs (e.g. https://...) —
-    // Chapa rejects the request outright if callback_url isn't a real URL.
     if (!process.env.BASE_URL || !/^https?:\/\//.test(process.env.BASE_URL)) {
-      return res.json({ success: false, message: "Server misconfiguration: BASE_URL is not set correctly. Please contact support." });
+      console.error("[order] BASE_URL is missing or invalid");
+      return fail(res, 500, "Online payment is not available right now. Please choose another method.");
     }
     if (!process.env.CLIENT_URL || !/^https?:\/\//.test(process.env.CLIENT_URL)) {
-      return res.json({ success: false, message: "Server misconfiguration: CLIENT_URL is not set correctly. Please contact support." });
+      console.error("[order] CLIENT_URL is missing or invalid");
+      return fail(res, 500, "Online payment is not available right now. Please choose another method.");
     }
 
-    const newOrder = await prisma.order.create({
+    const address = cleanAddress(req.body.address);
+    const { items, amount } = await priceOrder(req.body.items);
+
+    // Chapa allows max 50 characters in tx_ref
+    const txRef = `mq-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}`;
+
+    const order = await prisma.order.create({
       data: {
         userId,
         items,
@@ -177,18 +209,11 @@ const placeOrderChapa = async (req, res) => {
         amount,
         paymentMethod: "Chapa",
         payment: false,
+        txRef,
         date: BigInt(Date.now()),
       },
     });
-
-    // Chapa caps tx_ref at 50 chars — a full UUID-based ref overflows that,
-    // so use a short, still-unique ref instead (order is looked up by txRef later).
-    const txRef = `mq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-
-    await prisma.order.update({
-      where: { id: newOrder.id },
-      data: { txRef },
-    });
+    createdOrderId = order.id;
 
     const chapaRes = await axios.post(
       "https://api.chapa.co/v1/transaction/initialize",
@@ -200,139 +225,171 @@ const placeOrderChapa = async (req, res) => {
         last_name: user.name.split(" ").slice(1).join(" ") || user.name,
         tx_ref: txRef,
         callback_url: `${process.env.BASE_URL}/api/order/chapa/verify`,
-        return_url: `${process.env.CLIENT_URL}/order-success?orderId=${newOrder.id}`,
+        return_url: `${process.env.CLIENT_URL}/order-success?orderId=${order.id}`,
         customization: {
           title: "Marqato Payment",
-          // Chapa only allows letters, numbers, hyphens, underscores, spaces, dots — no "#"
-          description: `Order ${newOrder.id}`,
+          description: `Order ${order.id}`,
         },
       },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
+      { headers: { ...CHAPA_HEADERS(), "Content-Type": "application/json" }, timeout: 15000 }
     );
 
-    if (chapaRes.data.status === "success") {
-      res.json({ success: true, checkout_url: chapaRes.data.data.checkout_url });
-    } else {
-      await prisma.order.delete({ where: { id: newOrder.id } });
-      res.json({ success: false, message: "Failed to initialize Chapa payment" });
+    if (chapaRes.data?.status !== "success") {
+      throw new Error("Chapa did not accept the payment request");
     }
-  } catch (error) {
-    const chapaError = error?.response?.data;
-    console.log(chapaError || error.message);
 
-    // Surface Chapa's actual validation reason instead of the generic
-    // "Request failed with status code 400" Axios message.
-    let message = error.message;
+    res.json({ success: true, checkout_url: chapaRes.data.data.checkout_url });
+  } catch (error) {
+    // Do not leave unpaid orders behind when we could not start the payment
+    if (createdOrderId) {
+      await prisma.order.delete({ where: { id: createdOrderId } }).catch(() => {});
+    }
+
+    if (error instanceof OrderError) return fail(res, error.status, error.message);
+
+    // Chapa's own validation text (for example a bad name) is useful to the customer
+    const chapaError = error?.response?.data;
+    console.error("[order] placeOrderChapa:", chapaError || error.message);
+
+    let message = "Could not start the payment. Please try again.";
     if (chapaError?.message && typeof chapaError.message === "object") {
       message = Object.values(chapaError.message).flat().join(" ");
     } else if (typeof chapaError?.message === "string") {
       message = chapaError.message;
     }
-
-    res.json({ success: false, message });
+    fail(res, 502, message);
   }
 };
 
-// Chapa Webhook / Callback
+// Chapa callback. It can arrive several times (GET + POST), so it must be safe to repeat.
 const verifyChapaPayment = async (req, res) => {
   try {
-    const { trx_ref } = req.query;
-    const txRef = trx_ref || req.body.tx_ref;
+    const txRef = String(
+      req.query.trx_ref || req.query.tx_ref || req.body?.tx_ref || req.body?.trx_ref || ""
+    );
+    if (!/^mq-[a-z0-9-]{6,44}$/.test(txRef)) {
+      return fail(res, 400, "Invalid transaction reference.");
+    }
 
-    if (!txRef) return res.json({ success: false, message: "No tx_ref provided" });
+    const order = await prisma.order.findFirst({ where: { txRef } });
+    if (!order) return fail(res, 404, "Order not found");
+
+    // Already processed by an earlier callback
+    if (order.payment) return res.json({ success: true });
 
     const verifyRes = await axios.get(
-      `https://api.chapa.co/v1/transaction/verify/${txRef}`,
-      { headers: { Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}` } }
+      `https://api.chapa.co/v1/transaction/verify/${encodeURIComponent(txRef)}`,
+      { headers: CHAPA_HEADERS(), timeout: 15000 }
     );
 
-    if (verifyRes.data.status === "success" && verifyRes.data.data.status === "success") {
-      const order = await prisma.order.findFirst({ where: { txRef } });
-      if (order) {
-        await prisma.order.update({
-          where: { id: order.id },
+    const tx = verifyRes.data?.data;
+    const paidInFull =
+      verifyRes.data?.status === "success" &&
+      tx?.status === "success" &&
+      (!tx.currency || tx.currency === "ETB") &&
+      Number(tx.amount) + 0.01 >= order.amount;
+
+    if (!paidInFull) return fail(res, 402, "Payment not verified");
+
+    let outcome;
+    try {
+      outcome = await prisma.$transaction(async (tx2) => {
+        const claimed = await tx2.order.updateMany({
+          where: { id: order.id, payment: false },
           data: { payment: true },
         });
-        await prisma.user.update({
-          where: { id: order.userId },
-          data: { cartData: {} },
-        });
+        if (claimed.count === 0) return "already";
 
-        await decrementStock(order.items);
+        await reserveStock(tx2, order.items);
+        await tx2.user.update({ where: { id: order.userId }, data: { cartData: {} } });
+        return "done";
+      });
+    } catch (error) {
+      if (!(error instanceof OrderError)) throw error;
 
-        const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
-        const user = await prisma.user.findUnique({ where: { id: order.userId } });
-        if (user?.email) {
-          await sendOrderConfirmationEmail(user.email, user.name, serializeOrder(updatedOrder));
-        }
+      // The customer PAID but the item sold out meanwhile: keep the payment, flag it for the admin
+      const claimed = await prisma.order.updateMany({
+        where: { id: order.id, payment: false },
+        data: { payment: true, status: "Stock Issue" },
+      });
+      outcome = claimed.count > 0 ? "stock_issue" : "already";
+      if (outcome === "stock_issue") {
+        console.warn(`[order] PAID but out of stock — contact customer. Order ${order.id}`);
       }
-      res.json({ success: true });
-    } else {
-      res.json({ success: false, message: "Payment not verified" });
     }
+
+    if (outcome === "done") {
+      const [fresh, user] = await Promise.all([
+        prisma.order.findUnique({ where: { id: order.id } }),
+        prisma.user.findUnique({ where: { id: order.userId } }),
+      ]);
+      if (user?.email) {
+        sendEmailSafely(() => sendOrderConfirmationEmail(user.email, user.name, serializeOrder(fresh)));
+      }
+    }
+
+    res.json({ success: true });
   } catch (error) {
-    console.log(error?.response?.data || error.message);
-    res.json({ success: false, message: error.message });
+    handleError(res, error, "verifyChapaPayment");
   }
 };
 
-// Admin: All Orders
+// ── Reading orders ───────────────────────────────────────────────
 const allOrders = async (req, res) => {
   try {
     const orders = await prisma.order.findMany({ orderBy: { date: "desc" } });
     res.json({ success: true, orders: orders.map(serializeOrder) });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    handleError(res, error, "allOrders");
   }
 };
 
-// User Orders
 const userOrders = async (req, res) => {
   try {
-    const { userId } = req.body;
     const orders = await prisma.order.findMany({
-      where: { userId },
+      where: { userId: req.userId },
       orderBy: { date: "desc" },
     });
     res.json({ success: true, orders: orders.map(serializeOrder) });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    handleError(res, error, "userOrders");
   }
 };
 
-// Single Order by ID (used by OrderSuccess on page reload)
+// A customer can only open THEIR OWN order
 const singleOrder = async (req, res) => {
   try {
     const { orderId } = req.body;
-    if (!orderId) return res.json({ success: false, message: "orderId required" });
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
-    if (!order) return res.json({ success: false, message: "Order not found" });
+    if (typeof orderId !== "string" || !orderId) return fail(res, 400, "orderId required");
+
+    const order = await prisma.order.findFirst({ where: { id: orderId, userId: req.userId } });
+    if (!order) return fail(res, 404, "Order not found");
+
     res.json({ success: true, order: serializeOrder(order) });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    handleError(res, error, "singleOrder");
   }
 };
 
-// Update Status
+// Admin: change delivery status
 const updateStatus = async (req, res) => {
   try {
     const { orderId, status } = req.body;
-    await prisma.order.update({ where: { id: orderId }, data: { status } });
+    if (typeof orderId !== "string" || !ALLOWED_STATUSES.includes(status)) {
+      return fail(res, 400, "Invalid order or status");
+    }
 
     const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return fail(res, 404, "Order not found");
+
+    await prisma.order.update({ where: { id: orderId }, data: { status } });
+
     const user = await prisma.user.findUnique({ where: { id: order.userId } });
-    if (user?.email) {
-      await sendStatusUpdateEmail(user.email, user.name, orderId, status);
-    }
+    if (user?.email) sendEmailSafely(() => sendStatusUpdateEmail(user.email, user.name, orderId, status));
 
     res.json({ success: true, message: "Status Updated" });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    handleError(res, error, "updateStatus");
   }
 };
 
